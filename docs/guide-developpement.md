@@ -74,7 +74,7 @@ Si le dépôt est déjà sur votre ordinateur, ouvrez simplement un terminal dan
 **API facultative pour les fonctions actuelles du site.** Pour la lancer, ouvrir un deuxième terminal à la racine du projet :
 
 ```bash
-npm --prefix api ci
+npm run setup:api
 npm run dev:api
 ```
 
@@ -150,7 +150,7 @@ Les fichiers `.env` restent locaux. **Aucune clé secrète dans GitHub ou dans u
 
 ### Vérifications avant de partager une modification
 
-Depuis la racine, après avoir installé les dépendances du site et de l'API :
+Depuis la racine, après avoir installé les dépendances du site (`npm ci`) et de l'API (`npm run setup:api`) :
 
 ```bash
 npm run typecheck

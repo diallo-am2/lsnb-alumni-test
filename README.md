@@ -79,6 +79,12 @@ La photo choisie à l’inscription est conservée localement pendant sept jours
 
 ## Vérifications
 
+Les dépendances de l’API (dossier `api/`) s’installent séparément de celles du site :
+
+```bash
+npm run setup:api   # une seule fois (équivaut à npm --prefix api ci --include=dev)
+```
+
 ```bash
 npm run typecheck
 npm run build
@@ -86,6 +92,8 @@ npm run typecheck:api
 npm run test:api
 npm run build:api
 ```
+
+Si `build:api` affiche « Cannot find type definition file for 'node' », c’est que `setup:api` n’a pas été lancé (ou que `NODE_ENV=production` a fait ignorer les dépendances de développement).
 
 ## Déploiement Render
 
