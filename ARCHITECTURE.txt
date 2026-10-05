@@ -1,0 +1,213 @@
+================================================================
+LSNB RÉSEAU - ARCHITECTURE DU PROJET
+================================================================
+
+Prototype du réseau des élèves et alumni du Lycée Scientifique
+National de Bobo-Dioulasso (LSNB). Fonctions principales :
+  - découvrir des parcours (spécialité, domaine, pays) ;
+  - demander un échange / mentorat à un alumni volontaire ;
+  - créer un profil (parcours, expériences, contact, photo) ;
+  - rubrique « Highlights » : deux portraits d'alumni par semaine.
+
+
+1. VUE D'ENSEMBLE
+----------------------------------------------------------------
+
+   Navigateur (React SPA)
+        |
+        |-- lecture/écriture directe (supabase-js, clé publique + RLS)
+        |        --> Supabase : Auth, Postgres, Storage (photos)
+        |
+        '-- lecture publique des Highlights
+                 --> API Node.js (Fastify) --> Supabase (clé secrète)
+
+   Job planifié hebdomadaire (Render cron)
+        --> génère les portraits (appel IA) --> Supabase
+
+Aujourd'hui, l'interface parle directement à Supabase pour les
+comptes, profils, photos et demandes de contact. L'API Fastify ne
+sert que pour les Highlights et le contrôle de santé.
+
+
+2. STACK TECHNIQUE
+----------------------------------------------------------------
+Frontend : React 19, TypeScript, Vite 7, Tailwind CSS 4,
+           React Router 7, Anime.js (transitions), Three.js
+           (cartographie de trajectoires du hero), lucide-react
+Backend  : Node.js 24, Fastify 5 (+ helmet, cors), TypeScript
+Données  : Supabase (Auth, Postgres avec RLS, Storage)
+IA       : OpenAI (modèle gpt-5-nano) pour rédiger les Highlights,
+           uniquement dans le job hebdomadaire
+Hébergement : Render (site statique, service web, job cron)
+Tests    : node:test + tsx, PGlite pour les tests de base de données
+
+
+3. ARBORESCENCE
+----------------------------------------------------------------
+/
+|-- index.html, vite.config.ts, tsconfig*.json, package.json
+|-- render.yaml            Déploiement Render (3 services)
+|-- .env.example           Variables du frontend
+|-- README.md              Présentation et démarrage
+|-- docs/                  Guides : guide-developpement.md,
+|                          highlights.md, google-auth.md,
+|                          highlight-exemple.md
+|-- output/pdf/            Guide de reprise au format PDF
+|-- public/                Ressources statiques
+|-- src/                   Frontend (voir section 4)
+|-- api/                   Backend Fastify (voir section 5)
+'-- supabase/migrations/   Migrations SQL (voir section 6)
+
+
+4. FRONTEND (src/)
+----------------------------------------------------------------
+main.tsx, App.tsx    Point d'entrée et table des routes
+styles.css           Styles globaux (Tailwind)
+
+pages/               Une page par route :
+  /                  HomePage
+  /annuaire          DirectoryPage
+  /alumni/:id        ProfilePage
+  /rejoindre         JoinPage (inscription)
+  /connexion         LoginPage
+  /auth/callback     AuthCallbackPage (retour e-mail / Google)
+  /completer-profil  CompleteProfilePage (premier accès Google)
+  /espace            MemberPage (protégée)
+  /espace/modifier   EditProfilePage (protégée)
+  /confidentialite   PrivacyPage
+  *                  NotFoundPage
+
+auth/                AuthProvider : session du membre connecté
+components/
+  auth/              RequireAuth, GoogleAuthButton
+  alumni/            AlumniCard, AlumniCardMotion
+  directory/         DirectoryConstellation
+  home/              Hero, HeroSearch, WeeklyHighlights
+  layout/            SiteHeader, SiteFooter
+  motion/            RouteTransition, Reveal
+  visual/            TrajectoryField (Three.js), SectionPathBackdrop
+  ui/                Button, Avatar, BrandMark
+hooks/               useReducedMotion, useWeeklyHighlight
+lib/                 Accès aux services :
+  supabase.ts          client Supabase
+  auth.ts, authCallback.ts, googleAuth.ts, googleOAuth.ts
+  profileRepository.ts profils et contacts
+  avatarRepository.ts, pendingAvatarStore.ts   photos
+  onboardingRepository.ts   complétion du profil
+  highlightRepository.ts, highlightPreview.ts  Highlights
+  cn.ts                utilitaire de classes CSS
+data/alumni.ts       Profils fictifs de démonstration
+
+Mode démonstration : sans variables Supabase, le site fonctionne
+avec les profils fictifs et un aperçu local du profil.
+
+Variables : VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_API_URL
+
+
+5. BACKEND (api/)
+----------------------------------------------------------------
+src/server.ts        Démarrage du serveur
+src/app.ts           Application Fastify (helmet, CORS, routes)
+src/config.ts        Lecture des variables d'environnement
+src/app.test.ts      Tests de l'API
+
+Routes :
+  GET /health                     contrôle de disponibilité
+  GET /api/v1                     identification de l'API
+  GET /api/v1/highlights/current  édition courante des Highlights
+                                  (sans cache navigateur/CDN)
+
+src/highlights/      Logique des Highlights :
+  run.ts             Point d'entrée du job (génération / réparation)
+  service.ts         Orchestration : sélection, bail, publication
+  generator.ts       Génération des textes par l'IA
+  store.ts           Accès Postgres via Supabase
+  repair.ts          Reprise des portraits de secours
+  week.ts            Calcul du début de semaine
+  types.ts           Types partagés
+  *.test.ts          Tests (dont tests de base avec PGlite)
+
+Scripts npm : dev, build, start, typecheck, test,
+              highlights:generate, highlights:repair,
+              highlights:repair:retry
+
+Variables : SUPABASE_URL, SUPABASE_SECRET_KEY, FRONTEND_ORIGINS,
+            PORT, API_HOST, LOG_LEVEL ; pour le job seulement :
+            OPENAI_API_KEY, OPENAI_MODEL
+Les clés secrètes restent côté serveur (jamais de préfixe VITE_).
+
+
+6. BASE DE DONNÉES (supabase/migrations/)
+----------------------------------------------------------------
+Migrations appliquées dans l'ordre :
+  202609040001_initial_schema              profils, contacts,
+                                           demandes, bucket photos
+  202609050001_weekly_highlights           tables Highlights
+  202609050002_google_auth_onboarding      complétion de profil
+  202609050003_highlight_fallback_repair   réparation des secours
+  202609050004_highlight_repair_retries    reprises
+  202609150001_highlight_snapshot_gender   champ de sélection
+
+Tables principales :
+  profiles                 profils des membres (rôle alumni/élève)
+  profile_contacts         coordonnées, séparées des profils
+  connection_requests      demandes de contact / mentorat
+                           (statuts : pending, accepted, declined)
+  weekly_highlights        édition hebdomadaire
+  highlight_articles       portraits publiés
+  highlight_article_repairs  suivi des réparations
+
+Sécurité (Row Level Security) :
+  - les profils actifs sont lisibles par les membres connectés ;
+  - un membre ne modifie que son propre profil ;
+  - les coordonnées ne sont lisibles que par leur propriétaire ou
+    si celui-ci les a rendues visibles aux membres ;
+  - les participants lisent leurs demandes ; le destinataire y
+    répond, l'auteur peut retirer une demande en attente ;
+  - photos : bucket public en lecture, écriture limitée au
+    propriétaire (JPEG, PNG, WebP, 4 Mo maximum).
+
+Fonctions SQL : claim_weekly_highlight, claim_ai_highlight,
+save_highlight_article, publish_weekly_highlight,
+complete_member_profile, claim/save/record des réparations.
+
+
+7. FLUX IMPORTANTS
+----------------------------------------------------------------
+Inscription e-mail :
+  /rejoindre -> Supabase Auth -> e-mail de confirmation ->
+  /auth/callback -> session enregistrée -> /espace.
+  La photo choisie est gardée 7 jours dans le navigateur puis
+  envoyée après confirmation (même navigateur).
+
+Connexion Google :
+  /connexion -> Supabase Auth (Google) -> /auth/callback ->
+  /completer-profil au premier accès -> /espace.
+
+Highlights :
+  Cron (lundi 00h00 UTC, reprise 00h20) -> sélection de deux
+  alumni actifs (rotation, duo homme-femme privilégié) ->
+  portraits rédigés par l'IA -> sauvegarde en base.
+  Lecture : frontend -> API -> Supabase. Aucun appel IA au
+  chargement des pages.
+
+
+8. DÉPLOIEMENT (render.yaml)
+----------------------------------------------------------------
+  lsnb-alumni-web         site statique (dist), réécriture des
+                          routes vers index.html
+  lsnb-alumni-api         service Node.js depuis api/, contrôle
+                          de santé sur /health
+  lsnb-alumni-highlights  job cron hebdomadaire (plan starter)
+
+Node.js épinglé à 24.14.1. Déploiement automatique à chaque
+commit sur la branche suivie par Render.
+
+
+9. COMMANDES UTILES
+----------------------------------------------------------------
+  npm install && npm run dev        frontend (Vite)
+  npm --prefix api install
+  npm run dev:api                   API sur http://localhost:4000
+  npm run typecheck | build         vérifications frontend
+  npm run typecheck:api | test:api | build:api   côté API
