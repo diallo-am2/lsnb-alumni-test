@@ -8,6 +8,7 @@ import { ButtonLink } from "../ui/Button";
 
 const navigation = [
   { label: "Annuaire", to: "/annuaire" },
+  { label: "Offres", to: "/offres" },
   { label: "Highlight", to: "/#highlights" },
   { label: "Mentorat", to: "/#mentorat" },
   { label: "Le réseau", to: "/#reseau" },

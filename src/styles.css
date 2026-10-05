@@ -4974,3 +4974,413 @@ textarea:focus-visible {
   from { background-position: 200% 0; }
   to { background-position: -200% 0; }
 }
+
+/* Offres (opportunities) */
+.opp-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  background: var(--ink);
+  color: var(--chalk);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.opp-badge--muted {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--ink);
+}
+
+.opp-card {
+  display: flex;
+  height: 100%;
+  min-height: 370px;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  background: #f1e8dc;
+  color: var(--ink);
+  border-top: 4px solid var(--ink);
+}
+
+.opp-card--scholarship { border-top-color: var(--banco); }
+.opp-card--internship { border-top-color: var(--mango); }
+.opp-card--job { border-top-color: var(--ink); }
+.opp-card--other { border-top-color: var(--indigo-soft); }
+.opp-card.is-inactive { opacity: 0.72; }
+
+.opp-card__cover {
+  display: block;
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  background: var(--sand);
+}
+
+.opp-card__cover--empty {
+  background: repeating-linear-gradient(135deg, var(--sand) 0 10px, #f1e8dc 10px 20px);
+}
+
+.opp-card__body {
+  display: grid;
+  gap: 8px;
+  padding: 18px 22px 8px;
+}
+
+.opp-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.opp-card h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  line-height: 1.15;
+}
+
+.opp-card h3 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.opp-card h3 a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.opp-card {
+  position: relative;
+}
+
+.opp-card h3 a:hover,
+.opp-card h3 a:focus-visible {
+  text-decoration: underline;
+}
+
+.opp-card__org {
+  margin: 0;
+  font-weight: 700;
+}
+
+.opp-card__summary {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.opp-card__facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 22px 20px;
+  list-style: none;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.opp-card__facts li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.opp-detail {
+  padding: 36px 0 72px;
+}
+
+.opp-detail__header {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 28px;
+}
+
+.opp-detail__header h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.05;
+}
+
+.opp-detail__org {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.opp-detail__header .opp-card__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  padding: 0;
+}
+
+.opp-detail__banner {
+  margin: 0;
+  padding: 12px 16px;
+  background: #f6e3dc;
+  border-left: 4px solid #b4442b;
+  font-weight: 700;
+}
+
+.opp-detail__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 36px;
+  align-items: start;
+}
+
+.opp-detail__summary {
+  margin: 0 0 20px;
+  font-size: 1.12rem;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.opp-detail__aside {
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+  background: #f1e8dc;
+  border-top: 4px solid var(--ink);
+}
+
+.opp-detail__aside .button {
+  justify-content: center;
+}
+
+.opp-links h2,
+.opp-author p {
+  margin: 0 0 8px;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.opp-links ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.opp-links a,
+.opp-document,
+.opp-author a {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.opp-document {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--chalk);
+  border: 1px solid var(--line);
+  text-decoration: none;
+}
+
+.opp-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.opp-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.opp-gallery {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.opp-gallery--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.opp-gallery--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.opp-gallery img {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: cover;
+  background: var(--sand);
+}
+
+.rich-text {
+  line-height: 1.7;
+}
+
+.rich-text p {
+  margin: 0 0 14px;
+  white-space: pre-line;
+}
+
+.rich-text h3,
+.rich-text h4 {
+  margin: 24px 0 8px;
+  font-family: var(--font-display);
+}
+
+.rich-text ul,
+.rich-text ol {
+  margin: 0 0 14px;
+  padding-left: 22px;
+}
+
+.rich-text a {
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+.opp-help {
+  margin-top: 22px;
+  padding: 16px;
+  background: rgba(255, 253, 248, 0.08);
+  border: 1px solid rgba(255, 253, 248, 0.22);
+  font-size: 0.85rem;
+}
+
+.opp-help h2 {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.opp-help ul {
+  margin: 0 0 8px;
+  padding-left: 18px;
+}
+
+.opp-help code {
+  padding: 1px 5px;
+  background: rgba(255, 253, 248, 0.14);
+  font-size: 0.8rem;
+}
+
+.opp-editor fieldset {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+}
+
+.opp-editor legend {
+  padding: 0 6px;
+  font-weight: 700;
+}
+
+.opp-links-editor__row {
+  align-items: start;
+}
+
+.opp-media-editor__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.opp-media-editor__grid li {
+  position: relative;
+  display: grid;
+  gap: 6px;
+}
+
+.opp-media-editor__grid img,
+.opp-media-editor__missing {
+  display: grid;
+  width: 100%;
+  height: 110px;
+  place-items: center;
+  object-fit: cover;
+  background: var(--sand);
+}
+
+.opp-media-editor__grid li > button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  background: var(--ink);
+  color: var(--chalk);
+  border: 0;
+  cursor: pointer;
+}
+
+.opp-media-editor__grid input {
+  width: 100%;
+  font-size: 0.75rem;
+}
+
+.opp-media-editor__doc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.opp-file-button {
+  position: relative;
+  width: fit-content;
+  cursor: pointer;
+}
+
+.opp-file-button input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.my-opportunities__list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.my-opportunities__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+@media (max-width: 900px) {
+  .opp-detail__layout { grid-template-columns: minmax(0, 1fr); }
+  .my-opportunities__list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .opp-gallery--2,
+  .opp-gallery--3,
+  .my-opportunities__list { grid-template-columns: minmax(0, 1fr); }
+}
