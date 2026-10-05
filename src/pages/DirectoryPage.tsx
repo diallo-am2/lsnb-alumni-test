@@ -1,11 +1,16 @@
 import { RotateCcw, Search, SlidersHorizontal } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AlumniCard } from "../components/alumni/AlumniCard";
 import { DirectoryConstellation } from "../components/directory/DirectoryConstellation";
+import {
+  DirectoryEmpty,
+  DirectoryError,
+  DirectoryLoading,
+  DirectoryNoMatch,
+} from "../components/directory/DirectoryStates";
 import { Button } from "../components/ui/Button";
-import { alumniProfiles, type AlumniProfile } from "../data/alumni";
-import { loadProfiles } from "../lib/profileRepository";
+import { useDirectoryProfiles } from "../hooks/useDirectoryProfiles";
 
 function normalize(value: string) {
   return value
@@ -16,30 +21,11 @@ function normalize(value: string) {
 
 export function DirectoryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [profiles, setProfiles] = useState<AlumniProfile[]>(alumniProfiles);
-  const [profileSource, setProfileSource] = useState<"demo" | "supabase">("demo");
+  const { profiles, state: loadState, retry } = useDirectoryProfiles();
   const query = searchParams.get("q") ?? "";
   const domain = searchParams.get("domaine") ?? "";
   const country = searchParams.get("pays") ?? "";
   const mentoringOnly = searchParams.get("mentor") === "true";
-
-  useEffect(() => {
-    let active = true;
-    loadProfiles()
-      .then((result) => {
-        if (!active) return;
-        setProfiles(result.profiles);
-        setProfileSource(result.source);
-      })
-      .catch(() => {
-        if (!active) return;
-        setProfiles(alumniProfiles);
-        setProfileSource("demo");
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const availableDomains = useMemo(
     () => [...new Set(profiles.map((profile) => profile.domain))].sort(),
@@ -167,30 +153,35 @@ export function DirectoryPage() {
           </div>
         </aside>
 
-        <div className="directory-results">
+        <div className="directory-results" aria-busy={loadState.status === "loading"}>
           <div className="directory-results__bar">
             <p role="status" aria-live="polite">
-              <b>{filteredProfiles.length}</b> profil{filteredProfiles.length > 1 ? "s" : ""} trouvé{filteredProfiles.length > 1 ? "s" : ""}
+              {loadState.status === "loading" && "Chargement des profils…"}
+              {loadState.status === "error" && "Annuaire indisponible"}
+              {loadState.status === "ready" && (
+                <>
+                  <b>{filteredProfiles.length}</b> profil{filteredProfiles.length > 1 ? "s" : ""} trouvé{filteredProfiles.length > 1 ? "s" : ""}
+                </>
+              )}
             </p>
-            <span>
-              {profileSource === "demo" ? "Profils fictifs · démonstration" : "Profils des membres"}
-            </span>
+            {loadState.status === "ready" && (
+              <span>
+                {loadState.source === "demo" ? "Profils fictifs · démonstration" : "Profils des membres"}
+              </span>
+            )}
           </div>
 
-          {filteredProfiles.length > 0 ? (
+          {loadState.status === "loading" && <DirectoryLoading />}
+          {loadState.status === "error" && <DirectoryError onRetry={retry} />}
+          {loadState.status === "ready" && profiles.length === 0 && <DirectoryEmpty />}
+          {loadState.status === "ready" && profiles.length > 0 && filteredProfiles.length === 0 && (
+            <DirectoryNoMatch onReset={() => setSearchParams({})} />
+          )}
+          {loadState.status === "ready" && filteredProfiles.length > 0 && (
             <div className="directory-grid">
               {filteredProfiles.map((profile) => (
                 <AlumniCard key={profile.id} profile={profile} />
               ))}
-            </div>
-          ) : (
-            <div className="directory-empty">
-              <Search size={34} aria-hidden="true" />
-              <h2>Aucun parcours ne correspond encore.</h2>
-              <p>Essayez une spécialité plus large ou retirez un filtre.</p>
-              <Button variant="outline" onClick={() => setSearchParams({})}>
-                Voir tous les profils
-              </Button>
             </div>
           )}
         </div>

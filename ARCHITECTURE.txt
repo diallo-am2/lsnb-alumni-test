@@ -81,13 +81,15 @@ auth/                AuthProvider : session du membre connecté
 components/
   auth/              RequireAuth, GoogleAuthButton
   alumni/            AlumniCard, AlumniCardMotion
-  directory/         DirectoryConstellation
+  directory/         DirectoryConstellation, DirectoryStates
+                     (chargement / erreur + Réessayer / vide)
   home/              Hero, HeroSearch, WeeklyHighlights
   layout/            SiteHeader, SiteFooter
   motion/            RouteTransition, Reveal
   visual/            TrajectoryField (Three.js), SectionPathBackdrop
   ui/                Button, Avatar, BrandMark
-hooks/               useReducedMotion, useWeeklyHighlight
+hooks/               useReducedMotion, useWeeklyHighlight,
+                     useDirectoryProfiles (état loading/error/ready + retry)
 lib/                 Accès aux services :
   supabase.ts          client Supabase
   auth.ts, authCallback.ts, googleAuth.ts, googleOAuth.ts

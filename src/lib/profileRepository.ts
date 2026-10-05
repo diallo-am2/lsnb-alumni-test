@@ -105,10 +105,9 @@ export async function loadProfiles() {
     .order("last_name");
 
   if (error) throw error;
-  const profiles = (data as ProfileRow[]).map(mapProfile);
-  return profiles.length
-    ? { profiles, source: "supabase" as const }
-    : { profiles: alumniProfiles, source: "demo" as const };
+  // An empty directory is a real state (the page explains it); demo profiles
+  // are only used when Supabase is not configured.
+  return { profiles: (data as ProfileRow[]).map(mapProfile), source: "supabase" as const };
 }
 
 export async function loadProfile(id: string) {
