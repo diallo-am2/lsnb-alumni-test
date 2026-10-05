@@ -19,6 +19,7 @@ import {
   getAvatarValidationError,
   uploadAvatar,
 } from "../lib/avatarRepository";
+import { getProfileUrlError } from "../lib/profileLinks";
 import {
   loadEditableProfile,
   updateEditableProfile,
@@ -40,8 +41,27 @@ type EditorForm = {
   experience: string;
   offersMentoring: boolean;
   mentoringTopics: string;
+  linkedinUrl: string;
+  portfolioUrl: string;
   contactVisible: boolean;
 };
+
+type LinkField = "linkedinUrl" | "portfolioUrl";
+type LinkErrors = Partial<Record<LinkField, string>>;
+
+const LINK_LABELS: Record<LinkField, string> = {
+  linkedinUrl: "LinkedIn",
+  portfolioUrl: "du portfolio",
+};
+
+function validateLinks(form: Pick<EditorForm, LinkField>): LinkErrors {
+  const errors: LinkErrors = {};
+  for (const field of ["linkedinUrl", "portfolioUrl"] as const) {
+    const error = getProfileUrlError(form[field], LINK_LABELS[field]);
+    if (error) errors[field] = error;
+  }
+  return errors;
+}
 
 type SaveStatus = {
   kind: "idle" | "loading" | "success" | "warning" | "error";
@@ -66,6 +86,8 @@ function toEditorForm(profile: EditableProfile): EditorForm {
     experience: profile.experience,
     offersMentoring: profile.offersMentoring,
     mentoringTopics: profile.mentoringTopics.join("\n"),
+    linkedinUrl: profile.linkedinUrl,
+    portfolioUrl: profile.portfolioUrl,
     contactVisible: profile.contactVisible,
   };
 }
@@ -90,6 +112,7 @@ export function EditProfilePage() {
   const [loadError, setLoadError] = useState<string>();
   const [reloadKey, setReloadKey] = useState(0);
   const [status, setStatus] = useState<SaveStatus>({ kind: "idle" });
+  const [linkErrors, setLinkErrors] = useState<LinkErrors>({});
 
   useEffect(() => {
     if (!user) return;
@@ -101,6 +124,7 @@ export function EditProfilePage() {
       .then((profile) => {
         if (!active) return;
         setForm(toEditorForm(profile));
+        setLinkErrors({});
         setCurrentPhotoUrl(profile.photoUrl);
         setPhoto(null);
         setRemovePhoto(false);
@@ -135,6 +159,21 @@ export function EditProfilePage() {
   const updateField = <Key extends keyof EditorForm>(key: Key, value: EditorForm[Key]) => {
     setForm((current) => current ? { ...current, [key]: value } : current);
     setStatus({ kind: "idle" });
+  };
+
+  const updateLink = (field: LinkField, value: string) => {
+    updateField(field, value);
+    setLinkErrors((current) => {
+      if (!current[field]) return current;
+      const { [field]: _removed, ...rest } = current;
+      return rest;
+    });
+  };
+
+  const checkLink = (field: LinkField) => {
+    if (!form) return;
+    const error = getProfileUrlError(form[field], LINK_LABELS[field]);
+    setLinkErrors((current) => ({ ...current, [field]: error }));
   };
 
   const handlePhoto = (event: ChangeEvent<HTMLInputElement>) => {
@@ -177,6 +216,15 @@ export function EditProfilePage() {
     event.preventDefault();
     if (!form) return;
 
+    const errors = validateLinks(form);
+    setLinkErrors(errors);
+    const firstInvalid = (["linkedinUrl", "portfolioUrl"] as const).find((field) => errors[field]);
+    if (firstInvalid) {
+      setStatus({ kind: "error", message: "Corrigez les liens signalés avant d’enregistrer." });
+      document.getElementById(`edit-${firstInvalid}`)?.focus();
+      return;
+    }
+
     setStatus({ kind: "loading", message: "Enregistrement de vos modifications…" });
 
     try {
@@ -194,6 +242,8 @@ export function EditProfilePage() {
         experience: form.experience,
         offersMentoring: form.memberRole === "alumni" && form.offersMentoring,
         mentoringTopics: parseList(form.mentoringTopics),
+        linkedinUrl: form.linkedinUrl.trim(),
+        portfolioUrl: form.portfolioUrl.trim(),
         contactVisible: form.contactVisible,
         email: user.email ?? "",
       });
@@ -435,6 +485,53 @@ export function EditProfilePage() {
                 required
               />
             </label>
+
+            <div className="form-row">
+              <label className={`field-group${linkErrors.linkedinUrl ? " field-group--invalid" : ""}`}>
+                <span>Profil LinkedIn (facultatif)</span>
+                <input
+                  id="edit-linkedinUrl"
+                  type="text"
+                  inputMode="url"
+                  autoComplete="url"
+                  value={form.linkedinUrl}
+                  onChange={(event) => updateLink("linkedinUrl", event.target.value)}
+                  onBlur={() => checkLink("linkedinUrl")}
+                  placeholder="https://www.linkedin.com/in/votre-profil"
+                  aria-invalid={linkErrors.linkedinUrl ? true : undefined}
+                  aria-describedby={linkErrors.linkedinUrl ? "edit-linkedinUrl-error" : "edit-linkedinUrl-help"}
+                />
+                {linkErrors.linkedinUrl ? (
+                  <small id="edit-linkedinUrl-error" className="field-error" role="alert">
+                    {linkErrors.linkedinUrl}
+                  </small>
+                ) : (
+                  <small id="edit-linkedinUrl-help">Le lien doit commencer par https://</small>
+                )}
+              </label>
+              <label className={`field-group${linkErrors.portfolioUrl ? " field-group--invalid" : ""}`}>
+                <span>Portfolio ou site personnel (facultatif)</span>
+                <input
+                  id="edit-portfolioUrl"
+                  type="text"
+                  inputMode="url"
+                  autoComplete="url"
+                  value={form.portfolioUrl}
+                  onChange={(event) => updateLink("portfolioUrl", event.target.value)}
+                  onBlur={() => checkLink("portfolioUrl")}
+                  placeholder="https://votre-site.com"
+                  aria-invalid={linkErrors.portfolioUrl ? true : undefined}
+                  aria-describedby={linkErrors.portfolioUrl ? "edit-portfolioUrl-error" : "edit-portfolioUrl-help"}
+                />
+                {linkErrors.portfolioUrl ? (
+                  <small id="edit-portfolioUrl-error" className="field-error" role="alert">
+                    {linkErrors.portfolioUrl}
+                  </small>
+                ) : (
+                  <small id="edit-portfolioUrl-help">Le lien doit commencer par https://</small>
+                )}
+              </label>
+            </div>
 
             <div className="profile-editor-photo">
               <div className="profile-editor-photo__visual" aria-hidden="true">

@@ -2,7 +2,10 @@ import {
   ArrowLeft,
   BookOpen,
   Check,
+  ExternalLink,
+  Globe,
   GraduationCap,
+  Linkedin,
   MapPin,
   MessageCircle,
   Orbit,
@@ -14,6 +17,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { Avatar } from "../components/ui/Avatar";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { alumniProfiles, getAlumniProfile, type AlumniProfile } from "../data/alumni";
+import { toSafeProfileUrl } from "../lib/profileLinks";
 import { loadProfile } from "../lib/profileRepository";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { NotFoundPage } from "./NotFoundPage";
@@ -85,6 +89,8 @@ export function ProfilePage() {
         .filter((item) => item.id !== profile.id && item.domain === profile.domain)
         .slice(0, 2);
   const isOwnProfile = profile.isDemo === false && user?.id === profile.id;
+  const linkedinUrl = toSafeProfileUrl(profile.linkedinUrl);
+  const portfolioUrl = toSafeProfileUrl(profile.portfolioUrl);
 
   const handleRequestClick = () => {
     if (profile.isDemo !== false) {
@@ -250,6 +256,42 @@ export function ProfilePage() {
                 {profile.specialties.map((specialty) => <span key={specialty}>{specialty}</span>)}
               </div>
             </section>
+
+            {(linkedinUrl || portfolioUrl) && (
+              <section className="profile-links" aria-label={`Liens de ${profile.firstName}`}>
+                <p>Liens</p>
+                <ul>
+                  {linkedinUrl && (
+                    <li>
+                      <a
+                        href={linkedinUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Profil LinkedIn de ${profile.firstName} (s’ouvre dans un nouvel onglet)`}
+                      >
+                        <Linkedin aria-hidden="true" />
+                        <span>LinkedIn</span>
+                        <ExternalLink className="profile-links__external" aria-hidden="true" />
+                      </a>
+                    </li>
+                  )}
+                  {portfolioUrl && (
+                    <li>
+                      <a
+                        href={portfolioUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Portfolio de ${profile.firstName} (s’ouvre dans un nouvel onglet)`}
+                      >
+                        <Globe aria-hidden="true" />
+                        <span>Portfolio</span>
+                        <ExternalLink className="profile-links__external" aria-hidden="true" />
+                      </a>
+                    </li>
+                  )}
+                </ul>
+              </section>
+            )}
 
             {profile.offersMentoring && (
               <section className="profile-mentoring-card">

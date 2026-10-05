@@ -147,9 +147,14 @@ Migrations appliquées dans l'ordre :
   202609050003_highlight_fallback_repair   réparation des secours
   202609050004_highlight_repair_retries    reprises
   202609150001_highlight_snapshot_gender   champ de sélection
+  202610050001_profile_links               profiles.linkedin_url et
+                                           profiles.portfolio_url
+                                           (nullable, https:// exigé)
 
 Tables principales :
-  profiles                 profils des membres (rôle alumni/élève)
+  profiles                 profils des membres (rôle alumni/élève),
+                           dont liens facultatifs linkedin_url et
+                           portfolio_url
   profile_contacts         coordonnées, séparées des profils
   connection_requests      demandes de contact / mentorat
                            (statuts : pending, accepted, declined)

@@ -4854,3 +4854,57 @@ textarea:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Optional profile links (LinkedIn / portfolio) */
+.field-group--invalid input {
+  border-color: #b4442b;
+  box-shadow: 0 0 0 1px #b4442b;
+}
+
+.field-group small.field-error {
+  color: #7d301d;
+  font-weight: 650;
+}
+
+.profile-links ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.profile-links a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: var(--chalk);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font-size: 0.74rem;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.profile-links a:hover,
+.profile-links a:focus-visible {
+  border-color: var(--ink);
+}
+
+.profile-links a > svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.profile-links a > span {
+  flex: 1;
+}
+
+.profile-links .profile-links__external {
+  width: 14px;
+  height: 14px;
+  opacity: 0.55;
+}

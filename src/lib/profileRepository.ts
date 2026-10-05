@@ -1,5 +1,6 @@
 import type { AlumniProfile } from "../data/alumni";
 import { alumniProfiles } from "../data/alumni";
+import { toSafeProfileUrl } from "./profileLinks";
 import { isSupabaseConfigured, supabase } from "./supabase";
 
 export type ProfileGender = "male" | "female" | "unspecified";
@@ -20,6 +21,8 @@ type ProfileRow = {
   photo_url: string | null;
   offers_mentoring: boolean;
   mentoring_topics: string[] | null;
+  linkedin_url?: string | null;
+  portfolio_url?: string | null;
 };
 
 export type EditableProfile = {
@@ -37,6 +40,8 @@ export type EditableProfile = {
   photoUrl?: string;
   offersMentoring: boolean;
   mentoringTopics: string[];
+  linkedinUrl: string;
+  portfolioUrl: string;
   contactVisible: boolean;
 };
 
@@ -80,6 +85,8 @@ function mapProfile(row: ProfileRow): AlumniProfile {
     initials: `${row.first_name[0] ?? ""}${row.last_name[0] ?? ""}`.toUpperCase(),
     avatarTone: avatarToneFromId(row.id),
     photoUrl: row.photo_url ?? undefined,
+    linkedinUrl: toSafeProfileUrl(row.linkedin_url),
+    portfolioUrl: toSafeProfileUrl(row.portfolio_url),
     isDemo: false,
   };
 }
@@ -110,7 +117,7 @@ export async function loadProfile(id: string) {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, first_name, last_name, member_role, graduation_year, specialty, specialties, domain, city, country, experience, photo_url, offers_mentoring, mentoring_topics",
+      "id, first_name, last_name, member_role, graduation_year, specialty, specialties, domain, city, country, experience, photo_url, offers_mentoring, mentoring_topics, linkedin_url, portfolio_url",
     )
     .eq("id", id)
     .eq("is_active", true)
@@ -129,7 +136,7 @@ export async function loadEditableProfile(id: string): Promise<EditableProfile> 
     supabase
       .from("profiles")
       .select(
-        "id, first_name, last_name, member_role, gender, graduation_year, specialty, specialties, domain, city, country, experience, photo_url, offers_mentoring, mentoring_topics",
+        "id, first_name, last_name, member_role, gender, graduation_year, specialty, specialties, domain, city, country, experience, photo_url, offers_mentoring, mentoring_topics, linkedin_url, portfolio_url",
       )
       .eq("id", id)
       .maybeSingle(),
@@ -160,6 +167,8 @@ export async function loadEditableProfile(id: string): Promise<EditableProfile> 
     photoUrl: row.photo_url ?? undefined,
     offersMentoring: row.offers_mentoring,
     mentoringTopics: row.mentoring_topics?.filter(Boolean) ?? [],
+    linkedinUrl: row.linkedin_url ?? "",
+    portfolioUrl: row.portfolio_url ?? "",
     contactVisible: contactResult.data?.is_visible === true,
   };
 }
@@ -198,6 +207,8 @@ export async function updateEditableProfile(
       experience: profile.experience.trim(),
       offers_mentoring: offersMentoring,
       mentoring_topics: mentoringTopics,
+      linkedin_url: profile.linkedinUrl.trim() || null,
+      portfolio_url: profile.portfolioUrl.trim() || null,
     })
     .eq("id", id)
     .select("id")
