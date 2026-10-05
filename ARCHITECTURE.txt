@@ -74,6 +74,11 @@ pages/               Une page par route :
   /completer-profil  CompleteProfilePage (premier accès Google)
   /espace            MemberPage (protégée)
   /espace/modifier   EditProfilePage (protégée)
+  /offres            OpportunitiesPage (protégée) liste filtrable
+  /offres/nouvelle   OpportunityEditorPage (protégée)
+  /offres/:id        OpportunityPage (protégée) détail, contact, signalement
+  /offres/:id/modifier   OpportunityEditorPage (auteur)
+  /espace/offres     MyOpportunitiesPage (protégée)
   /confidentialite   PrivacyPage
   *                  NotFoundPage
 
@@ -81,6 +86,7 @@ auth/                AuthProvider : session du membre connecté
 components/
   auth/              RequireAuth, GoogleAuthButton
   alumni/            AlumniCard, AlumniCardMotion
+  opportunities/     OpportunityCard, OpportunityStates, RichText
   directory/         DirectoryConstellation, DirectoryStates
                      (chargement / erreur + Réessayer / vide)
   home/              Hero, HeroSearch, WeeklyHighlights
@@ -89,16 +95,22 @@ components/
   visual/            TrajectoryField (Three.js), SectionPathBackdrop
   ui/                Button, Avatar, BrandMark
 hooks/               useReducedMotion, useWeeklyHighlight,
-                     useDirectoryProfiles (état loading/error/ready + retry)
+                     useDirectoryProfiles (état loading/error/ready + retry),
+                     useRemoteData (même principe, générique)
 lib/                 Accès aux services :
   supabase.ts          client Supabase
   auth.ts, authCallback.ts, googleAuth.ts, googleOAuth.ts
   profileRepository.ts profils et contacts
+  profileLinks.ts      validation des liens LinkedIn / portfolio
+  opportunityRepository.ts   offres : lecture, écriture, médias, signalement
+  opportunityValidation.ts   règles de saisie des offres
+  richText.ts          mini-Markdown sûr (aucun HTML brut) pour les descriptions
   avatarRepository.ts, pendingAvatarStore.ts   photos
   onboardingRepository.ts   complétion du profil
   highlightRepository.ts, highlightPreview.ts  Highlights
   cn.ts                utilitaire de classes CSS
 data/alumni.ts       Profils fictifs de démonstration
+data/opportunities.ts  Types, libellés et offres fictives de démonstration
 
 Mode démonstration : sans variables Supabase, le site fonctionne
 avec les profils fictifs et un aperçu local du profil.
@@ -152,6 +164,8 @@ Migrations appliquées dans l'ordre :
   202610050001_profile_links               profiles.linkedin_url et
                                            profiles.portfolio_url
                                            (nullable, https:// exigé)
+  202610050002_opportunities               offres, médias, signalements,
+                                           bucket privé opportunity-media
 
 Tables principales :
   profiles                 profils des membres (rôle alumni/élève),
@@ -163,6 +177,12 @@ Tables principales :
   weekly_highlights        édition hebdomadaire
   highlight_articles       portraits publiés
   highlight_article_repairs  suivi des réparations
+  opportunities            offres (bourse, stage, emploi, autre) ;
+                           publiées immédiatement, lisibles par les
+                           membres connectés uniquement
+  opportunity_media        images (5 max, la 1re = couverture) et 1 PDF
+  opportunity_reports      signalements ; 3 membres distincts masquent
+                           l'offre (status = hidden)
 
 Sécurité (Row Level Security) :
   - les profils actifs sont lisibles par les membres connectés ;
@@ -173,6 +193,13 @@ Sécurité (Row Level Security) :
     répond, l'auteur peut retirer une demande en attente ;
   - photos : bucket public en lecture, écriture limitée au
     propriétaire (JPEG, PNG, WebP, 4 Mo maximum).
+
+Offres : 5 publications / 24 h par membre ; liens https:// uniquement ;
+fichiers dans le bucket privé opportunity-media (URL signées d'1 h) ;
+l'auteur ne peut ni modifier une offre masquée ni la republier
+(rétablir à la main : update public.opportunities set status =
+'published' where id = '...').
+Contact de l'auteur : réutilise connection_requests (kind = contact).
 
 Fonctions SQL : claim_weekly_highlight, claim_ai_highlight,
 save_highlight_article, publish_weekly_highlight,
