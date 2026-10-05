@@ -13,7 +13,11 @@ import { AuthCallbackPage } from "./pages/AuthCallbackPage";
 import { JoinPage } from "./pages/JoinPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MemberPage } from "./pages/MemberPage";
+import { MyOpportunitiesPage } from "./pages/MyOpportunitiesPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { OpportunitiesPage } from "./pages/OpportunitiesPage";
+import { OpportunityEditorPage } from "./pages/OpportunityEditorPage";
+import { OpportunityPage } from "./pages/OpportunityPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { CompleteProfilePage } from "./pages/CompleteProfilePage";
@@ -61,6 +65,11 @@ export function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/annuaire" element={<DirectoryPage />} />
             <Route path="/alumni/:profileId" element={<ProfilePage />} />
+            <Route path="/offres" element={<RequireAuth><OpportunitiesPage /></RequireAuth>} />
+            <Route path="/offres/nouvelle" element={<RequireAuth><OpportunityEditorPage /></RequireAuth>} />
+            <Route path="/offres/:opportunityId" element={<RequireAuth><OpportunityPage /></RequireAuth>} />
+            <Route path="/offres/:opportunityId/modifier" element={<RequireAuth><OpportunityEditorPage /></RequireAuth>} />
+            <Route path="/espace/offres" element={<RequireAuth><MyOpportunitiesPage /></RequireAuth>} />
             <Route path="/rejoindre" element={<JoinPage />} />
             <Route path="/connexion" element={<LoginPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />

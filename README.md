@@ -79,6 +79,12 @@ La photo choisie à l’inscription est conservée localement pendant sept jours
 
 ## Vérifications
 
+Les dépendances de l’API (dossier `api/`) s’installent séparément de celles du site :
+
+```bash
+npm run setup:api   # une seule fois (équivaut à npm --prefix api ci --include=dev)
+```
+
 ```bash
 npm run typecheck
 npm run build
@@ -86,6 +92,8 @@ npm run typecheck:api
 npm run test:api
 npm run build:api
 ```
+
+Si `build:api` affiche « Cannot find type definition file for 'node' », c’est que `setup:api` n’a pas été lancé (ou que `NODE_ENV=production` a fait ignorer les dépendances de développement).
 
 ## Déploiement Render
 
@@ -103,7 +111,9 @@ La mise en production est coordonnée par le responsable. La configuration prév
 
 Les Highlights suivent le flux `frontend → API → Supabase` pour la lecture publique. Le job choisit deux alumni actifs au hasard avec rotation, privilégie un duo homme–femme et accepte les autres duos lorsque nécessaire. GPT-5 nano d’OpenAI rédige les portraits à partir des profils ; la sélection et les textes sont conservés en base. Aucun appel IA n’a lieu au chargement des pages et Redis n’est pas nécessaire. La [documentation Highlights](docs/highlights.md) détaille la migration, les réglages, les reprises, les coûts et les limites des contrôles de fidélité.
 
-L’inscription et la connexion Google sont implémentées via Supabase Auth, avec complétion du profil au premier accès. Le [guide d’activation Google](docs/google-auth.md) détaille la nouvelle migration et les réglages Google/Supabase. Les liens LinkedIn et portfolio sont facultatifs : champs `linkedin_url` et `portfolio_url` (https:// obligatoire) modifiables depuis `/espace/modifier` et affichés sur la fiche publique. La migration [`202610050001_profile_links.sql`](supabase/migrations/202610050001_profile_links.sql) doit être appliquée à Supabase **avant** le déploiement du frontend.
+L’inscription et la connexion Google sont implémentées via Supabase Auth, avec complétion du profil au premier accès. Le [guide d’activation Google](docs/google-auth.md) détaille la nouvelle migration et les réglages Google/Supabase. La section **Offres** (`/offres`, réservée aux membres connectés) permet de publier des bourses, stages et emplois avec liens, images (5 max) et un PDF. Publication immédiate, signalement par les membres (3 signalements masquent l'offre). La migration [`202610050002_opportunities.sql`](supabase/migrations/202610050002_opportunities.sql) crée les tables et le bucket privé `opportunity-media` : à appliquer à Supabase avant le déploiement du frontend.
+
+Les liens LinkedIn et portfolio sont facultatifs : champs `linkedin_url` et `portfolio_url` (https:// obligatoire) modifiables depuis `/espace/modifier` et affichés sur la fiche publique. La migration [`202610050001_profile_links.sql`](supabase/migrations/202610050001_profile_links.sql) doit être appliquée à Supabase **avant** le déploiement du frontend.
 
 ## Direction visuelle
 

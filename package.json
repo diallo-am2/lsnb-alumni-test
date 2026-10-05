@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "setup:api": "npm --prefix api ci --include=dev",
     "dev:api": "npm --prefix api run dev",
     "build": "tsc -b && vite build",
     "build:api": "npm --prefix api run build",

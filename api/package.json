@@ -8,9 +8,12 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "prebuild": "node scripts/check-dev-deps.mjs",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
+    "pretypecheck": "node scripts/check-dev-deps.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "pretest": "node scripts/check-dev-deps.mjs",
     "test": "node --import tsx --test src/app.test.ts src/highlights/*.test.ts",
     "highlights:generate": "node dist/highlights/run.js",
     "highlights:repair": "node dist/highlights/run.js --repair-fallbacks",
