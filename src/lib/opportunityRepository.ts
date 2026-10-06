@@ -211,8 +211,6 @@ export async function saveOpportunity(userId: string, payload: SaveOpportunityPa
 
   const uploaded: string[] = [];
   try {
-    if (payload.removedMediaIds.length > 0) await deleteMedia(payload.removedMediaIds);
-
     let position = 0;
     if (!isNew) {
       const { data } = await client
@@ -244,6 +242,10 @@ export async function saveOpportunity(userId: string, payload: SaveOpportunityPa
         .insert({ opportunity_id: opportunityId, kind: "document", storage_path: path, position: 0 });
       if (error) throw error;
     }
+
+    // Only remove the old files once the new ones are safely uploaded — removing
+    // first would lose the existing file if the new upload then failed.
+    if (payload.removedMediaIds.length > 0) await deleteMedia(payload.removedMediaIds);
   } catch (error) {
     // A half-created offer is worse than none: undo a failed creation completely.
     if (uploaded.length > 0) await client.storage.from(BUCKET).remove(uploaded);

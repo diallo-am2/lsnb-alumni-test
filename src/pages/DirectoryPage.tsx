@@ -82,7 +82,7 @@ export function DirectoryPage() {
           <div className="directory-hero__copy">
             <p className="eyebrow">Annuaire LSNB</p>
             <h1>Trouver la bonne personne,<br />pas seulement un nom.</h1>
-            <p>
+            <p className="directory-hero__lede">
               Cherchez une spécialité, un domaine, un pays ou une disponibilité au mentorat.
               Les coordonnées restent sous le contrôle de chaque membre.
             </p>

@@ -2072,11 +2072,15 @@ textarea:focus-visible {
   line-height: 0.9;
 }
 
-.directory-hero__copy > p:last-child {
+.directory-hero__lede {
   max-width: 520px;
   margin-bottom: 0;
   color: rgba(255, 255, 255, 0.67);
   font-size: 0.94rem;
+}
+
+.opportunities-page .directory-hero__lede {
+  margin-bottom: 28px;
 }
 
 .directory-constellation {
@@ -4161,7 +4165,7 @@ textarea:focus-visible {
     min-width: 0;
   }
 
-  .directory-hero__copy > p:last-child {
+  .directory-hero__lede {
     max-width: 620px;
   }
 
@@ -4605,7 +4609,7 @@ textarea:focus-visible {
     line-height: 0.92;
   }
 
-  .directory-hero__copy > p:last-child {
+  .directory-hero__lede {
     width: 100%;
     max-width: 100%;
     font-size: 0.82rem;
