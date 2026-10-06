@@ -66,7 +66,7 @@ export function OpportunitiesPage() {
           <div className="directory-hero__copy">
             <p className="eyebrow">Offres LSNB</p>
             <h1>Bourses, stages, emplois :<br />ce que le réseau partage.</h1>
-            <p>
+            <p className="directory-hero__lede">
               Les offres sont publiées par les membres, pour les membres. Vérifiez toujours
               l’organisme avant de postuler et signalez toute offre douteuse.
             </p>
