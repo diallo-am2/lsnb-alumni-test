@@ -5700,3 +5700,36 @@ textarea:focus-visible {
   .request-item__head { grid-template-columns: auto 1fr; }
   .request-item__status { grid-column: 1 / -1; flex-direction: row; align-items: center; }
 }
+
+
+/* ───────── Offres : fichiers joints ───────── */
+
+.opp-media-editor__doc {
+  flex-wrap: wrap;
+}
+
+.opp-media-editor__doc a {
+  font-weight: 700;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+
+.opp-media-editor__doc em {
+  font-style: normal;
+  color: rgba(12, 41, 72, 0.64);
+}
+
+.opp-media-editor__size {
+  display: block;
+  font-size: 0.72rem;
+  color: rgba(12, 41, 72, 0.64);
+}
+
+.opp-progress {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: 8px;
+  margin-top: 8px;
+  accent-color: var(--banco);
+}

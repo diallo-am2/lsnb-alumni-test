@@ -15,6 +15,8 @@ export const OPPORTUNITY_LIMITS = {
 } as const;
 
 export const MAX_OPPORTUNITY_IMAGE_SIZE = 4 * 1024 * 1024;
+// What the browser accepts to read: larger photos are shrunk before upload (see imageResize.ts).
+export const MAX_OPPORTUNITY_IMAGE_INPUT_SIZE = 25 * 1024 * 1024;
 export const MAX_OPPORTUNITY_DOCUMENT_SIZE = 8 * 1024 * 1024;
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -74,9 +76,17 @@ export function validateOpportunity(values: OpportunityFormValues, initialDeadli
   return errors;
 }
 
+/** Checks a picture as chosen by the member, before it is shrunk. */
+export function getOpportunityImageInputError(file: File) {
+  if (!IMAGE_TYPES.has(file.type)) return "Utilisez une image PNG, JPG ou WebP.";
+  if (file.size > MAX_OPPORTUNITY_IMAGE_INPUT_SIZE) return "Cette image dépasse 25 Mo : choisissez-en une plus légère.";
+  return null;
+}
+
+/** Checks a picture as it will be uploaded (after shrinking). */
 export function getOpportunityImageError(file: File) {
   if (!IMAGE_TYPES.has(file.type)) return "Utilisez une image PNG, JPG ou WebP.";
-  if (file.size > MAX_OPPORTUNITY_IMAGE_SIZE) return "Chaque image doit peser moins de 4 Mo.";
+  if (file.size > MAX_OPPORTUNITY_IMAGE_SIZE) return "Cette image reste trop lourde (4 Mo maximum) même après réduction.";
   return null;
 }
 

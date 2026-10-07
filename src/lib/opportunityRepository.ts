@@ -8,6 +8,7 @@ import {
 } from "../data/opportunities";
 import { cleanLinks, type OpportunityFormValues } from "./opportunityValidation";
 import { notifyRequestEvent } from "./requestRepository";
+import { describeUploadError } from "./uploadErrors";
 import { isSupabaseConfigured, supabase } from "./supabase";
 
 const BUCKET = "opportunity-media";
@@ -76,7 +77,7 @@ function mapRow(row: OpportunityRow): Opportunity {
       .filter((item) => item.kind === "image")
       .map((item) => ({ id: item.id, path: item.storage_path, alt: item.alt_text ?? "" })),
     document: document
-      ? { id: document.id, path: document.storage_path, name: document.storage_path.split("/").pop() ?? "document.pdf" }
+      ? { id: document.id, path: document.storage_path, name: document.alt_text?.trim() || "Document PDF" }
       : undefined,
   };
 }
@@ -157,7 +158,11 @@ export type SaveOpportunityPayload = {
   newImages: NewImage[];
   removedMediaIds: string[];
   newDocument: File | null;
+  /** Called while files are being uploaded (done = files already sent). */
+  onProgress?: (progress: UploadProgress) => void;
 };
+
+export type UploadProgress = { done: number; total: number };
 
 const EXTENSIONS: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -210,59 +215,56 @@ export async function saveOpportunity(userId: string, payload: SaveOpportunityPa
     if (error) throw error;
   }
 
+  // 1. Upload the new files (storage only, nothing visible yet).
+  // 2. Swap them in with one database call: removed rows and added rows change
+  //    together or not at all (see replace_opportunity_media).
+  // 3. Delete the old files from storage, best effort.
+  const total = payload.newImages.length + (payload.newDocument ? 1 : 0);
+  let done = 0;
+  const report = () => payload.onProgress?.({ done, total });
   const uploaded: string[] = [];
-  try {
-    let position = 0;
-    if (!isNew) {
-      const { data } = await client
-        .from("opportunity_media")
-        .select("position")
-        .eq("opportunity_id", opportunityId)
-        .eq("kind", "image");
-      position = data?.length ? Math.max(...data.map((item) => item.position as number)) + 1 : 0;
-    }
+  const added: { kind: "image" | "document"; storage_path: string; alt_text: string }[] = [];
+  let removedPaths: string[] = [];
 
+  try {
+    report();
     for (const image of payload.newImages) {
       const path = await uploadFile(userId, opportunityId, image.file);
       uploaded.push(path);
-      const { error } = await client.from("opportunity_media").insert({
-        opportunity_id: opportunityId,
-        kind: "image",
-        storage_path: path,
-        alt_text: image.alt.trim() || null,
-        position: Math.min(position++, 10),
-      });
-      if (error) throw error;
+      added.push({ kind: "image", storage_path: path, alt_text: image.alt.trim() });
+      done += 1;
+      report();
     }
-
     if (payload.newDocument) {
       const path = await uploadFile(userId, opportunityId, payload.newDocument);
       uploaded.push(path);
-      const { error } = await client
-        .from("opportunity_media")
-        .insert({ opportunity_id: opportunityId, kind: "document", storage_path: path, position: 0 });
-      if (error) throw error;
+      // The original file name is kept in alt_text so the member recognises the document later.
+      added.push({ kind: "document", storage_path: path, alt_text: payload.newDocument.name.slice(0, 200) });
+      done += 1;
+      report();
     }
 
-    // Only remove the old files once the new ones are safely uploaded — removing
-    // first would lose the existing file if the new upload then failed.
-    if (payload.removedMediaIds.length > 0) await deleteMedia(payload.removedMediaIds);
+    if (added.length > 0 || payload.removedMediaIds.length > 0) {
+      const { data, error } = await client.rpc("replace_opportunity_media", {
+        p_opportunity_id: opportunityId,
+        p_remove_ids: payload.removedMediaIds,
+        p_new: added,
+      });
+      if (error) throw error;
+      removedPaths = Array.isArray(data) ? (data as string[]) : [];
+    }
   } catch (error) {
+    if (uploaded.length > 0) await client.storage.from(BUCKET).remove(uploaded).catch(() => undefined);
     // A half-created offer is worse than none: undo a failed creation completely.
-    if (uploaded.length > 0) await client.storage.from(BUCKET).remove(uploaded);
     if (isNew) await client.from("opportunities").delete().eq("id", opportunityId);
-    throw error;
+    const reason = describeUploadError(error);
+    throw new Error(isNew
+      ? `L’offre n’a pas été publiée. ${reason}`
+      : `Le texte de l’offre est enregistré, mais les fichiers n’ont pas pu l’être : l’ancien contenu est conservé. ${reason}`);
   }
-  return opportunityId;
-}
 
-async function deleteMedia(mediaIds: string[]) {
-  const client = requireSupabase();
-  const { data } = await client.from("opportunity_media").select("id, storage_path").in("id", mediaIds);
-  const paths = (data ?? []).map((item) => item.storage_path as string);
-  if (paths.length > 0) await client.storage.from(BUCKET).remove(paths);
-  const { error } = await client.from("opportunity_media").delete().in("id", mediaIds);
-  if (error) throw error;
+  if (removedPaths.length > 0) await client.storage.from(BUCKET).remove(removedPaths).catch(() => undefined);
+  return opportunityId;
 }
 
 export async function setOpportunityStatus(id: string, status: Extract<OpportunityStatus, "published" | "closed">) {
