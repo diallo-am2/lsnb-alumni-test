@@ -6,7 +6,7 @@ import {
   type OpportunityLink,
   type OpportunityStatus,
 } from "../data/opportunities";
-import { cleanLinks, type OpportunityFormValues } from "./opportunityValidation";
+import { canonicalCountry, cleanLinks, type OpportunityFormValues } from "./opportunityValidation";
 import { notifyRequestEvent } from "./requestRepository";
 import { describeUploadError } from "./uploadErrors";
 import { isSupabaseConfigured, supabase } from "./supabase";
@@ -191,7 +191,7 @@ export async function saveOpportunity(userId: string, payload: SaveOpportunityPa
     organization: values.organization.trim(),
     summary: values.summary.trim(),
     description: values.description.trim(),
-    country: values.country.trim() || null,
+    country: canonicalCountry(values.country) || null,
     city: values.city.trim() || null,
     is_remote: payload.isRemote,
     domain: values.domain.trim() || null,
