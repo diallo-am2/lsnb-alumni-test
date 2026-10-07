@@ -2,8 +2,11 @@ import { ArrowLeft, FileText, ImagePlus, LoaderCircle, Plus, Save, Trash2, X } f
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
+import { DescriptionEditor } from "../components/opportunities/DescriptionEditor";
 import { LoadError } from "../components/opportunities/OpportunityStates";
 import { Button, ButtonLink } from "../components/ui/Button";
+import { COUNTRIES, findCountry } from "../data/countries";
+import { DOMAIN_SUGGESTIONS } from "../data/domains";
 import { opportunityKinds, type Opportunity, type OpportunityKind } from "../data/opportunities";
 import { useRemoteData } from "../hooks/useRemoteData";
 import { formatFileSize } from "../lib/fileSize";
@@ -183,12 +186,21 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
       return setStatus({ kind: "error", message: "Mode démonstration : la publication nécessite Supabase." });
     }
 
-    const found = validateOpportunity(values, initial?.deadline ?? "");
+    const found = validateOpportunity(values, initial?.deadline ?? "", initial?.country ?? "");
     setErrors(found);
     const firstInvalid = Object.keys(found)[0];
     if (firstInvalid) {
       setStatus({ kind: "error", message: "Corrigez les champs signalés avant de publier." });
       document.getElementById(`opp-${firstInvalid}`)?.focus();
+      return;
+    }
+
+    // Applicants plan around the deadline: gently check before publishing a scholarship without one
+    // (only when creating: someone fixing a typo should not be asked again).
+    if (!isEdit && kind === "scholarship" && !values.deadline && !window.confirm(
+      "Aucune date limite n’est indiquée pour cette bourse. Les candidats en ont besoin pour s’organiser.\n\nPublier quand même ?",
+    )) {
+      document.getElementById("opp-deadline")?.focus();
       return;
     }
 
@@ -239,14 +251,12 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
           </p>
 
           <div className="opp-help">
-            <h2>Mise en forme de la description</h2>
-            <ul>
-              <li><code>## Titre</code> pour une section</li>
-              <li><code>- élément</code> pour une liste</li>
-              <li><code>**gras**</code> et <code>*italique*</code></li>
-              <li><code>[texte](https://…)</code> pour un lien</li>
-            </ul>
-            <p>Aucun code HTML n’est interprété. Les liens doivent commencer par https://.</p>
+            <h2>Une offre qui se lit bien</h2>
+            <p>
+              Le <b>résumé</b> apparaît dans la liste, la <b>description</b> sur la page de l’offre.
+              Utilisez la barre au-dessus de la description pour les titres, les listes et les liens,
+              puis vérifiez le résultat avec « Aperçu ».
+            </p>
           </div>
           <div className="opp-help">
             <h2>Rester prudent</h2>
@@ -261,6 +271,8 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
           </div>
 
           <form className="account-form" onSubmit={handleSubmit}>
+            <section className="opp-section" aria-labelledby="opp-section-essential">
+            <h2 id="opp-section-essential" className="opp-section__title">L’essentiel</h2>
             <label className="field-group">
               <span>Type d’offre</span>
               <select value={kind} onChange={(event) => setKind(event.target.value as OpportunityKind)}>
@@ -286,22 +298,42 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
               <span>Résumé (affiché sur la carte)</span>
               <textarea id="opp-summary" rows={3} value={values.summary} maxLength={OPPORTUNITY_LIMITS.summary[1]}
                 onChange={(event) => set("summary", event.target.value)} {...invalid("summary")} />
-              <small>{values.summary.trim().length}/{OPPORTUNITY_LIMITS.summary[1]}</small>
+              <small>
+                {values.summary.trim().length}/{OPPORTUNITY_LIMITS.summary[1]} — une ou deux phrases, affichées
+                dans la liste des offres.
+              </small>
               {error("summary")}
             </label>
 
-            <label className={`field-group${fieldError("description") ? " field-group--invalid" : ""}`}>
-              <span>Description détaillée</span>
-              <textarea id="opp-description" rows={10} value={values.description} maxLength={OPPORTUNITY_LIMITS.description[1]}
-                onChange={(event) => set("description", event.target.value)} {...invalid("description")} />
-              <small>{values.description.trim().length}/{OPPORTUNITY_LIMITS.description[1]}</small>
+            <div className={`field-group${fieldError("description") ? " field-group--invalid" : ""}`}>
+              <span id="opp-description-label">Description détaillée</span>
+              <DescriptionEditor id="opp-description" labelId="opp-description-label" value={values.description}
+                maxLength={OPPORTUNITY_LIMITS.description[1]} invalid={Boolean(errors.description)}
+                describedBy="opp-description-error" onChange={(next) => set("description", next)} />
+              <small>
+                {values.description.trim().length}/{OPPORTUNITY_LIMITS.description[1]} — conditions, public visé,
+                pièces à fournir, étapes de sélection.
+              </small>
               {error("description")}
-            </label>
+            </div>
+            </section>
 
+            <section className="opp-section" aria-labelledby="opp-section-where">
+            <h2 id="opp-section-where" className="opp-section__title">Où et quand</h2>
             <div className="form-row">
-              <label className="field-group">
+              <label className={`field-group${fieldError("country") ? " field-group--invalid" : ""}`}>
                 <span>Pays (facultatif)</span>
-                <input id="opp-country" value={values.country} onChange={(event) => set("country", event.target.value)} />
+                <input id="opp-country" list="opp-countries" autoComplete="off" value={values.country}
+                  placeholder="Commencez à taper : Maroc, France…"
+                  onChange={(event) => set("country", event.target.value)}
+                  onBlur={() => {
+                    // "morocco", "cote d'ivoire"… become the one canonical spelling.
+                    const canonical = findCountry(values.country);
+                    if (canonical && canonical !== values.country) set("country", canonical);
+                  }}
+                  {...invalid("country")} />
+                <datalist id="opp-countries">{COUNTRIES.map((name) => <option key={name} value={name} />)}</datalist>
+                {error("country")}
               </label>
               <label className="field-group">
                 <span>Ville (facultatif)</span>
@@ -312,13 +344,17 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
             <div className="form-row">
               <label className="field-group">
                 <span>Domaine (facultatif)</span>
-                <input id="opp-domain" value={values.domain} maxLength={80} onChange={(event) => set("domain", event.target.value)}
-                  placeholder="Ex. Énergie, Informatique, Santé" />
+                <input id="opp-domain" list="opp-domains" value={values.domain} maxLength={80}
+                  onChange={(event) => set("domain", event.target.value)} placeholder="Choisissez ou saisissez un domaine" />
+                <datalist id="opp-domains">{DOMAIN_SUGGESTIONS.map((name) => <option key={name} value={name} />)}</datalist>
               </label>
               <label className={`field-group${fieldError("deadline") ? " field-group--invalid" : ""}`}>
-                <span>Date limite (facultatif)</span>
+                <span>{kind === "scholarship" ? "Date limite (recommandée)" : "Date limite (facultatif)"}</span>
                 <input id="opp-deadline" type="date" value={values.deadline}
                   onChange={(event) => set("deadline", event.target.value)} {...invalid("deadline")} />
+                {kind === "scholarship" && !values.deadline && (
+                  <small>Les candidats s’organisent autour de cette date : indiquez-la si elle existe.</small>
+                )}
                 {error("deadline")}
               </label>
             </div>
@@ -328,6 +364,10 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
               <span><b>Possible à distance</b> Télétravail ou candidature sans déplacement.</span>
             </label>
 
+            </section>
+
+            <section className="opp-section" aria-labelledby="opp-section-apply">
+            <h2 id="opp-section-apply" className="opp-section__title">Pour postuler</h2>
             <label className={`field-group${fieldError("applyUrl") ? " field-group--invalid" : ""}`}>
               <span>Lien pour postuler (facultatif)</span>
               <input id="opp-applyUrl" type="text" inputMode="url" value={values.applyUrl}
@@ -367,6 +407,10 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
               )}
             </fieldset>
 
+            </section>
+
+            <section className="opp-section" aria-labelledby="opp-section-files">
+            <h2 id="opp-section-files" className="opp-section__title">Fichiers joints (facultatif)</h2>
             <fieldset className="opp-media-editor">
               <legend>Images ({imageCount}/{OPPORTUNITY_LIMITS.maxImages}) — la première sert de couverture</legend>
               <ul className="opp-media-editor__grid">
@@ -452,6 +496,8 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
               )}
               <small>Un seul PDF, 8 Mo maximum (dossier de candidature, cahier des charges…).</small>
             </fieldset>
+
+            </section>
 
             {status.kind !== "idle" && status.message && (
               <div className={`form-status form-status--${status.kind}`} role="status">

@@ -1,3 +1,4 @@
+import { findCountry } from "../data/countries";
 import { todayIso, type OpportunityLink } from "../data/opportunities";
 import { getProfileUrlError } from "./profileLinks";
 
@@ -43,7 +44,11 @@ function lengthError(value: string, [min, max]: readonly [number, number], label
   return undefined;
 }
 
-export function validateOpportunity(values: OpportunityFormValues, initialDeadline = ""): OpportunityErrors {
+export function validateOpportunity(
+  values: OpportunityFormValues,
+  initialDeadline = "",
+  initialCountry = "",
+): OpportunityErrors {
   const errors: OpportunityErrors = {};
   const set = (key: string, message: string | undefined) => {
     if (message) errors[key] = message;
@@ -53,7 +58,12 @@ export function validateOpportunity(values: OpportunityFormValues, initialDeadli
   set("organization", lengthError(values.organization, OPPORTUNITY_LIMITS.organization, "L’organisme"));
   set("summary", lengthError(values.summary, OPPORTUNITY_LIMITS.summary, "Le résumé"));
   set("description", lengthError(values.description, OPPORTUNITY_LIMITS.description, "La description"));
-  if (values.country.trim().length > OPPORTUNITY_LIMITS.place) set("country", "Pays trop long.");
+  const country = values.country.trim();
+  // The country is a filter on the list page: it must be a real country, spelled one way.
+  // A value saved before this rule existed can stay as it is while the offer is edited.
+  if (country && !findCountry(country) && country !== initialCountry) {
+    errors.country = "Choisissez un pays dans la liste (ex. Maroc, Burkina Faso, France).";
+  }
   if (values.city.trim().length > OPPORTUNITY_LIMITS.place) set("city", "Ville trop longue.");
   set("applyUrl", getProfileUrlError(values.applyUrl, "de candidature"));
 
@@ -101,4 +111,10 @@ export function cleanLinks(links: OpportunityLink[]): OpportunityLink[] {
   return links
     .map((link) => ({ label: link.label.trim(), url: link.url.trim() }))
     .filter((link) => link.label || link.url);
+}
+
+/** The country as it must be stored: the canonical spelling when it is a known country. */
+export function canonicalCountry(value: string) {
+  const trimmed = value.trim();
+  return findCountry(trimmed) ?? trimmed;
 }
