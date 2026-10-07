@@ -1,7 +1,8 @@
-import { Menu, X } from "lucide-react";
+import { Inbox, Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
+import { useRequestBadge } from "../../hooks/useRequestBadge";
 import { cn } from "../../lib/cn";
 import { BrandMark } from "../ui/BrandMark";
 import { ButtonLink } from "../ui/Button";
@@ -18,6 +19,10 @@ export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
   const { user, isLoading } = useAuth();
+  const pendingRequests = useRequestBadge();
+  const requestsLabel = pendingRequests > 0
+    ? `Demandes, ${pendingRequests} nécessitant votre attention`
+    : "Demandes";
 
   useEffect(() => {
     setMenuOpen(false);
@@ -52,9 +57,17 @@ export function SiteHeader() {
 
         <div className="site-header__actions">
           {!isLoading && user ? (
-            <ButtonLink to="/espace" size="sm" variant="light">
-              Mon espace
-            </ButtonLink>
+            <>
+              <NavLink to="/espace/demandes" className="site-header__requests" aria-label={requestsLabel}>
+                <Inbox size={20} aria-hidden="true" />
+                {pendingRequests > 0 && (
+                  <span className="site-header__badge" aria-hidden="true">{pendingRequests > 9 ? "9+" : pendingRequests}</span>
+                )}
+              </NavLink>
+              <ButtonLink to="/espace" size="sm" variant="light">
+                Mon espace
+              </ButtonLink>
+            </>
           ) : !isLoading ? (
             <>
               <NavLink to="/connexion" className="site-header__login">
@@ -88,9 +101,14 @@ export function SiteHeader() {
               </NavLink>
             ))}
             {user ? (
-              <ButtonLink to="/espace" variant="light" className="mt-2">
-                Mon espace
-              </ButtonLink>
+              <>
+                <NavLink to="/espace/demandes">
+                  Demandes{pendingRequests > 0 ? ` (${pendingRequests})` : ""}
+                </NavLink>
+                <ButtonLink to="/espace" variant="light" className="mt-2">
+                  Mon espace
+                </ButtonLink>
+              </>
             ) : (
               <>
                 <NavLink to="/connexion">Se connecter</NavLink>

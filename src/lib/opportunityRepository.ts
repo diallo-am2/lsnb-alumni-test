@@ -7,6 +7,7 @@ import {
   type OpportunityStatus,
 } from "../data/opportunities";
 import { cleanLinks, type OpportunityFormValues } from "./opportunityValidation";
+import { notifyRequestEvent } from "./requestRepository";
 import { isSupabaseConfigured, supabase } from "./supabase";
 
 const BUCKET = "opportunity-media";
@@ -295,23 +296,32 @@ export async function reportOpportunity(opportunityId: string, reason: string) {
   }
 }
 
-/** Contact request to the author, using the existing member-to-member request system. */
-export async function contactOpportunityAuthor(opportunity: Pick<Opportunity, "authorId" | "title">, message: string) {
+/**
+ * Message to the author of an offer, stored as a connection request that points to the
+ * offer. The author finds it in "Demandes" and is notified by e-mail (a link only).
+ */
+export async function contactOpportunityAuthor(
+  opportunity: Pick<Opportunity, "id" | "authorId" | "title">,
+  message: string,
+) {
   const client = requireSupabase();
   const { data: auth } = await client.auth.getUser();
   if (!auth.user) throw new Error("Connectez-vous pour contacter l’auteur.");
   if (auth.user.id === opportunity.authorId) throw new Error("Vous ne pouvez pas vous contacter vous-même.");
 
-  const { error } = await client.from("connection_requests").insert({
+  const { data, error } = await client.from("connection_requests").insert({
     requester_id: auth.user.id,
     recipient_id: opportunity.authorId,
     request_kind: "contact",
-    message: `À propos de l’offre « ${opportunity.title} » — ${message.trim()}`,
-  });
+    message: message.trim(),
+    opportunity_id: opportunity.id,
+    opportunity_title: opportunity.title.slice(0, 140),
+  }).select("id").single();
   if (error) {
     if (error.code === DUPLICATE_KEY) {
-      throw new Error("Vous avez déjà une demande en attente auprès de cet auteur.");
+      throw new Error("Vous avez déjà un message en attente pour cette offre.");
     }
     throw error;
   }
+  void notifyRequestEvent(data.id, "created");
 }

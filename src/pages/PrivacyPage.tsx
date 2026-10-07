@@ -15,6 +15,8 @@ export function PrivacyPage() {
         moyen de contact. Le genre est facultatif et déclaré par la personne pour équilibrer
         les duos Highlight et adapter les pronoms et les accords du portrait. Il n’est jamais
         déduit du nom ou de la photo. Le mentorat est volontaire et peut être désactivé à tout moment.
+        Si vous écrivez à un membre ou répondez à une demande, les messages échangés et les
+        coordonnées que vous choisissez de partager sont aussi enregistrés (voir plus bas).
       </p>
       <h2>Inscription et connexion avec Google</h2>
       <p>
@@ -44,6 +46,35 @@ export function PrivacyPage() {
         reflète les informations du profil au moment de sa rédaction. N’ajoutez pas de coordonnées
         privées dans le texte de votre parcours : ce texte peut être transmis à OpenAI et repris
         dans un portrait public.
+      </p>
+      <h2 id="demandes">Demandes, messages et coordonnées partagées</h2>
+      <p>
+        Quand un membre vous écrit — depuis votre profil, depuis l’une de vos offres ou par une
+        demande de mentorat —, son message est enregistré et n’est visible que par vous et par lui,
+        dans la page « Demandes ». Personne d’autre ne peut le lire, pas même les autres membres.
+        L’auteur d’une demande encore sans réponse peut la retirer.
+      </p>
+      <p>
+        Vos coordonnées ne sont jamais partagées automatiquement. En acceptant une demande, un
+        formulaire vous demande ce que vous souhaitez partager : votre adresse e-mail et/ou un
+        numéro WhatsApp que vous saisissez à ce moment-là. Vous pouvez ne partager que l’un des deux.
+        Si vous déclinez, rien n’est partagé. Les coordonnées choisies sont rattachées à cette
+        demande, visibles uniquement par vous deux ; elles ne sont pas ajoutées à votre profil ni
+        affichées dans l’annuaire. La demande, son message et les coordonnées partagées sont
+        supprimés si l’un des deux comptes est supprimé.
+      </p>
+      <h2 id="notifications">Notifications par e-mail</h2>
+      <p>
+        Pour vous prévenir qu’une demande vous attend, ou que la vôtre a été acceptée, le site
+        envoie un e-mail à l’adresse de votre compte. Cet e-mail contient uniquement le nom de la
+        personne concernée, le titre de l’offre le cas échéant et un lien vers votre espace : jamais
+        le texte du message ni aucune coordonnée, qui ne se consultent qu’après connexion. Un refus
+        n’est pas notifié par e-mail ; la personne le voit dans « Demandes ».
+      </p>
+      <p>
+        L’envoi des e-mails est assuré par Brevo, un service d’envoi d’e-mails, qui reçoit pour cela
+        l’adresse du destinataire et le contenu de la notification. Vous n’avez pas besoin
+        de compte chez ce prestataire.
       </p>
       <h2>Mode démonstration</h2>
       <p>
