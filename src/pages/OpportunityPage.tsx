@@ -177,7 +177,9 @@ export function OpportunityPage() {
 
             {opportunity.document?.url && (
               <a className="opp-document" href={opportunity.document.url} target="_blank" rel="noopener noreferrer">
-                <FileText aria-hidden="true" /> Document joint (PDF)
+                <FileText aria-hidden="true" /> {opportunity.document.name === "Document PDF"
+                  ? "Document joint (PDF)"
+                  : `Document joint : ${opportunity.document.name}`}
               </a>
             )}
 

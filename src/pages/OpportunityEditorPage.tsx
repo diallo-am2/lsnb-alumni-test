@@ -6,18 +6,26 @@ import { LoadError } from "../components/opportunities/OpportunityStates";
 import { Button, ButtonLink } from "../components/ui/Button";
 import { opportunityKinds, type Opportunity, type OpportunityKind } from "../data/opportunities";
 import { useRemoteData } from "../hooks/useRemoteData";
+import { formatFileSize } from "../lib/fileSize";
+import { prepareImage } from "../lib/imageResize";
 import { loadOpportunity, saveOpportunity } from "../lib/opportunityRepository";
 import {
   OPPORTUNITY_LIMITS,
   getOpportunityDocumentError,
   getOpportunityImageError,
+  getOpportunityImageInputError,
   validateOpportunity,
   type OpportunityErrors,
   type OpportunityFormValues,
 } from "../lib/opportunityValidation";
 import { isSupabaseConfigured } from "../lib/supabase";
 
-type Status = { kind: "idle" | "loading" | "error"; message?: string };
+type Status = {
+  kind: "idle" | "loading" | "error";
+  message?: string;
+  /** Files sent so far, shown as a progress bar while saving. */
+  progress?: { done: number; total: number };
+};
 type PendingImage = { key: string; file: File; alt: string; preview: string };
 
 const emptyValues: OpportunityFormValues = {
@@ -113,22 +121,31 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
   };
 
   const imageCount = existingImages.length + newImages.length;
-  const existingDocument = initial?.document && !removeDocument ? initial.document : undefined;
+  const attachedDocument = initial?.document;
 
-  const handleImages = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleImages = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = [...(event.target.files ?? [])];
     event.target.value = "";
+    if (files.length === 0) return;
     let room = OPPORTUNITY_LIMITS.maxImages - imageCount;
     const accepted: PendingImage[] = [];
     let problem: string | null = null;
-    for (const file of files) {
-      const fileError = getOpportunityImageError(file);
-      if (fileError) {
-        problem = `${file.name} : ${fileError}`;
+    setStatus({ kind: "loading", message: "Préparation des images…" });
+    for (const original of files) {
+      const inputError = getOpportunityImageInputError(original);
+      if (inputError) {
+        problem = `${original.name} : ${inputError}`;
         break;
       }
       if (room <= 0) {
         problem = `Maximum ${OPPORTUNITY_LIMITS.maxImages} images par offre.`;
+        break;
+      }
+      // Big photos are shrunk here instead of being refused.
+      const file = await prepareImage(original);
+      const fileError = getOpportunityImageError(file);
+      if (fileError) {
+        problem = `${original.name} : ${fileError}`;
         break;
       }
       room -= 1;
@@ -147,6 +164,8 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
     const error = getOpportunityDocumentError(file);
     if (error) return setStatus({ kind: "error", message: error });
     setNewDocument(file);
+    // Choosing a file while one is attached means "replace it": the old one goes away on save.
+    if (initial?.document) setRemoveDocument(true);
     setStatus({ kind: "idle" });
   };
 
@@ -173,7 +192,8 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
       return;
     }
 
-    setStatus({ kind: "loading", message: isEdit ? "Enregistrement…" : "Publication de l’offre…" });
+    const idleMessage = isEdit ? "Enregistrement…" : "Publication de l’offre…";
+    setStatus({ kind: "loading", message: idleMessage });
     try {
       const removed = [...removedMediaIds];
       if (removeDocument && initial?.document) removed.push(initial.document.id);
@@ -185,6 +205,12 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
         newImages: newImages.map(({ file, alt }) => ({ file, alt })),
         removedMediaIds: removed,
         newDocument,
+        onProgress: ({ done, total }) =>
+          setStatus({
+            kind: "loading",
+            message: total > 0 && done < total ? `Envoi du fichier ${done + 1} sur ${total}…` : idleMessage,
+            ...(total > 0 ? { progress: { done, total } } : {}),
+          }),
       });
       navigate(`/offres/${id}`);
     } catch (error) {
@@ -357,6 +383,7 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
                 {newImages.map((image) => (
                   <li key={image.key}>
                     <img src={image.preview} alt="" />
+                    <span className="opp-media-editor__size">{formatFileSize(image.file.size)}</span>
                     <input aria-label={`Description de ${image.file.name}`} placeholder="Description (accessibilité)"
                       value={image.alt} maxLength={200}
                       onChange={(event) => setNewImages((current) =>
@@ -371,29 +398,55 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
               {imageCount < OPPORTUNITY_LIMITS.maxImages && (
                 <label className="button button--outline button--sm opp-file-button">
                   <ImagePlus aria-hidden="true" /> Ajouter des images
-                  <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={handleImages} />
+                  <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={(event) => void handleImages(event)} />
                 </label>
               )}
-              <small>PNG, JPG ou WebP, 4 Mo maximum chacune.</small>
+              <small>PNG, JPG ou WebP. Les grandes photos sont réduites automatiquement avant l’envoi.</small>
             </fieldset>
 
             <fieldset className="opp-media-editor">
               <legend>Document PDF (facultatif)</legend>
-              {existingDocument && (
+              {attachedDocument && !removeDocument && (
                 <p className="opp-media-editor__doc">
-                  <FileText aria-hidden="true" /> Document déjà joint
-                  <Button variant="ghost" size="sm" onClick={() => setRemoveDocument(true)}>Retirer</Button>
+                  <FileText aria-hidden="true" />
+                  {attachedDocument.url ? (
+                    <a href={attachedDocument.url} target="_blank" rel="noopener noreferrer">{attachedDocument.name}</a>
+                  ) : (
+                    <span>{attachedDocument.name}</span>
+                  )}
+                  <label className="button button--outline button--sm opp-file-button">
+                    Remplacer
+                    <input type="file" accept="application/pdf" onChange={handleDocument} />
+                  </label>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setRemoveDocument(true)}>Retirer</Button>
                 </p>
               )}
               {newDocument && (
                 <p className="opp-media-editor__doc">
-                  <FileText aria-hidden="true" /> {newDocument.name}
-                  <Button variant="ghost" size="sm" onClick={() => setNewDocument(null)}>Retirer</Button>
+                  <FileText aria-hidden="true" />
+                  <span>
+                    {newDocument.name} <em>({formatFileSize(newDocument.size)})</em>
+                    {attachedDocument && <> — remplacera « {attachedDocument.name} »</>}
+                  </span>
+                  <Button type="button" variant="ghost" size="sm"
+                    onClick={() => {
+                      setNewDocument(null);
+                      setRemoveDocument(false);
+                    }}>
+                    {attachedDocument ? "Annuler le remplacement" : "Retirer"}
+                  </Button>
                 </p>
               )}
-              {!existingDocument && !newDocument && (
+              {attachedDocument && removeDocument && !newDocument && (
+                <p className="opp-media-editor__doc">
+                  <FileText aria-hidden="true" />
+                  <span>« {attachedDocument.name} » sera retiré à l’enregistrement.</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setRemoveDocument(false)}>Annuler</Button>
+                </p>
+              )}
+              {(!attachedDocument || removeDocument) && !newDocument && (
                 <label className="button button--outline button--sm opp-file-button">
-                  <FileText aria-hidden="true" /> Joindre un PDF
+                  <FileText aria-hidden="true" /> {attachedDocument ? "Joindre un autre PDF" : "Joindre un PDF"}
                   <input type="file" accept="application/pdf" onChange={handleDocument} />
                 </label>
               )}
@@ -404,6 +457,10 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
               <div className={`form-status form-status--${status.kind}`} role="status">
                 {status.kind === "loading" && <LoaderCircle className="spin" aria-hidden="true" />}
                 {status.message}
+                {status.progress && (
+                  <progress className="opp-progress" max={status.progress.total} value={status.progress.done}
+                    aria-label="Progression de l’envoi des fichiers" />
+                )}
               </div>
             )}
 
