@@ -106,7 +106,7 @@ export function OpportunityPage() {
       else await reportOpportunity(opportunity.id, text);
       setFeedback({
         kind: "success",
-        message: panel === "contact" ? "Votre message a été transmis à l’auteur." : "Merci, votre signalement a été transmis.",
+        message: panel === "contact" ? "Votre message a été transmis à l’auteur. Retrouvez sa réponse dans « Demandes »." : "Merci, votre signalement a été transmis.",
       });
       setText("");
       setPanel("none");

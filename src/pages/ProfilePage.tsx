@@ -19,6 +19,7 @@ import { Button, ButtonLink } from "../components/ui/Button";
 import { alumniProfiles, getAlumniProfile, type AlumniProfile } from "../data/alumni";
 import { toSafeProfileUrl } from "../lib/profileLinks";
 import { loadProfile } from "../lib/profileRepository";
+import { notifyRequestEvent } from "../lib/requestRepository";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { NotFoundPage } from "./NotFoundPage";
 
@@ -122,21 +123,30 @@ export function ProfilePage() {
     }
 
     const data = new FormData(event.currentTarget);
-    const { error } = await supabase.from("connection_requests").insert({
+    const { data: created, error } = await supabase.from("connection_requests").insert({
       requester_id: authData.user.id,
       recipient_id: profile.id,
       request_kind: profile.offersMentoring ? "mentoring" : "contact",
       message: String(data.get("message") ?? "").trim(),
-    });
+    }).select("id").single();
 
     if (error) {
-      setRequestStatus({ kind: "error", message: error.message });
+      setRequestStatus({
+        kind: "error",
+        message: error.code === "23505"
+          ? "Vous avez déjà une demande en attente auprès de cette personne."
+          : error.message,
+      });
       return;
     }
 
+    void notifyRequestEvent(created.id, "created");
     setRequestSent(true);
     setRequestOpen(false);
-    setRequestStatus({ kind: "success", message: "Votre demande a été transmise." });
+    setRequestStatus({
+      kind: "success",
+      message: `Votre demande a été transmise. Retrouvez la réponse de ${profile.firstName} dans « Demandes ».`,
+    });
   };
 
   return (

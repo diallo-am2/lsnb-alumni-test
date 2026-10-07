@@ -20,6 +20,7 @@ import { OpportunityEditorPage } from "./pages/OpportunityEditorPage";
 import { OpportunityPage } from "./pages/OpportunityPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { RequestsPage } from "./pages/RequestsPage";
 import { CompleteProfilePage } from "./pages/CompleteProfilePage";
 
 function PostConfirmationRedirect() {
@@ -70,6 +71,7 @@ export function App() {
             <Route path="/offres/:opportunityId" element={<RequireAuth><OpportunityPage /></RequireAuth>} />
             <Route path="/offres/:opportunityId/modifier" element={<RequireAuth><OpportunityEditorPage /></RequireAuth>} />
             <Route path="/espace/offres" element={<RequireAuth><MyOpportunitiesPage /></RequireAuth>} />
+            <Route path="/espace/demandes" element={<RequireAuth><RequestsPage /></RequireAuth>} />
             <Route path="/rejoindre" element={<JoinPage />} />
             <Route path="/connexion" element={<LoginPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />

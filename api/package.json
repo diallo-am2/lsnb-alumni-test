@@ -14,7 +14,7 @@
     "pretypecheck": "node scripts/check-dev-deps.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "pretest": "node scripts/check-dev-deps.mjs",
-    "test": "node --import tsx --test src/app.test.ts src/highlights/*.test.ts",
+    "test": "node --import tsx --test src/app.test.ts src/highlights/*.test.ts src/notifications/*.test.ts",
     "highlights:generate": "node dist/highlights/run.js",
     "highlights:repair": "node dist/highlights/run.js --repair-fallbacks",
     "highlights:repair:retry": "node dist/highlights/run.js --repair-fallbacks --retry-failed",
@@ -24,11 +24,13 @@
     "@fastify/cors": "^11.3.0",
     "@fastify/helmet": "^13.1.1",
     "dotenv": "^17.4.2",
-    "fastify": "^5.12.3"
+    "fastify": "^5.12.3",
+    "nodemailer": "^10.0.15"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "@types/node": "^26.4.1",
+    "@types/nodemailer": "^8.0.2",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2"
   }
