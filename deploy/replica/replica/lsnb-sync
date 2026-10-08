@@ -1,0 +1,398 @@
+#!/usr/bin/env bash
+# lsnb-sync — keeps this machine (the REPLICA) a faithful copy of the live Supabase (the PRIMARY).
+#
+#   lsnb-sync doctor            check everything without changing anything
+#   lsnb-sync run [options]     copy database rows and storage files from the primary
+#   lsnb-sync status            how fresh is the replica (exit code 1 when stale or failed)
+#   lsnb-sync restore <file|latest> [--yes]
+#                               put an older stored copy back into THIS machine's database
+#
+# run options:  --db-only   --files-only   --force (skip the "suspicious drop" guard)
+#
+# Pull model: the replica connects to the primary, never the other way round, and the
+# primary only offers read access (see primary/lsnb-export).
+set -Eeuo pipefail
+
+CONF="${LSNB_SYNC_CONF:-$HOME/.config/lsnb-sync/sync.env}"
+# shellcheck source=/dev/null
+[ -r "$CONF" ] && . "$CONF"
+
+: "${PRIMARY_HOST:=}"
+: "${PRIMARY_USER:=ubuntu}"
+: "${SSH_KEY:=$HOME/.ssh/lsnb_replica}"
+: "${SSH_PORT:=22}"
+: "${LOCAL_PSQL:=docker exec -i supabase-db psql -U postgres -d postgres}"
+: "${STORAGE_DEST:=$HOME/supabase/docker/volumes/storage}"
+: "${WORK_DIR:=$HOME/lsnb-sync}"
+: "${SYNC_SCHEMAS:=auth public storage}"
+: "${EXCLUDE_TABLES:=auth.schema_migrations storage.migrations}"
+: "${GUARD_TABLES:=auth.users public.profiles}"
+: "${FINGERPRINT_SQL:=/usr/local/share/lsnb-replica/fingerprint.sql}"
+: "${MAX_AGE_MIN:=180}"
+: "${DUMP_TIMEOUT:=900}"
+: "${RSYNC_TIMEOUT:=300}"
+: "${MAX_FILE_DELETIONS:=100}"
+: "${HEALTHCHECK_URL:=}"
+
+read -r -a psql_cmd <<<"$LOCAL_PSQL"
+read -r -a schemas <<<"$SYNC_SCHEMAS"
+read -r -a excluded <<<"$EXCLUDE_TABLES"
+read -r -a guarded <<<"$GUARD_TABLES"
+
+DUMP_DIR="$WORK_DIR/dumps"
+STATUS_FILE="$WORK_DIR/status"
+SSH_ARGS=(-i "$SSH_KEY" -p "$SSH_PORT" -o BatchMode=yes -o ConnectTimeout=15
+  -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o StrictHostKeyChecking=accept-new)
+
+TMP_DIR=$(mktemp -d)
+STEP="démarrage"
+FAIL_MSG=""
+RECORDING=0
+SUCCEEDED=0
+START_EPOCH=$(date +%s)
+LAST_DUMP=""
+
+log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >&2; }
+die() { FAIL_MSG="$*"; log "ÉCHEC : $*"; exit 1; }
+
+# The command words are meant to be expanded here and interpreted by lsnb-export over there.
+# shellcheck disable=SC2029
+remote() { ssh "${SSH_ARGS[@]}" "$PRIMARY_USER@$PRIMARY_HOST" "$@"; }
+lsql() { "${psql_cmd[@]}" -X -At -v ON_ERROR_STOP=1 "$@"; }
+
+schema_list() {
+  local out="" s
+  for s in "${schemas[@]}"; do out+="${out:+,}'${s}'"; done
+  printf '%s' "$out"
+}
+
+excluded_array() {
+  local out="" t
+  for t in "${excluded[@]}"; do out+="${out:+,}'${t}'"; done
+  printf 'array[%s]::text[]' "$out"
+}
+
+counts_sql() {
+  local sql="" t
+  for t in "${guarded[@]}"; do
+    sql+="${sql:+ union all }select '${t}' as t, count(*) as n from ${t}"
+  done
+  printf '%s' "$sql"
+}
+
+local_schema() { lsql -v "schemas=$(schema_list)" -f - <"$FINGERPRINT_SQL"; }
+local_counts() { lsql -F ' ' -c "$(counts_sql)"; }
+
+status_value() { # status_value key
+  [ -r "$STATUS_FILE" ] || return 0
+  sed -n "s/^$1=//p" "$STATUS_FILE" | head -n 1
+}
+
+write_status() { # write_status ok|failed message
+  local result="$1" message="${2:-}" now last_success
+  now=$(date +%s)
+  last_success=$(status_value last_success)
+  [ "$result" = ok ] && last_success="$now"
+  mkdir -p "$WORK_DIR"
+  {
+    echo "last_attempt=$now"
+    echo "last_result=$result"
+    echo "last_success=${last_success:-0}"
+    echo "last_error=${message//$'\n'/ }"
+    echo "last_dump=$LAST_DUMP"
+    echo "duration_s=$((now - START_EPOCH))"
+  } >"$STATUS_FILE.tmp"
+  mv "$STATUS_FILE.tmp" "$STATUS_FILE"
+}
+
+ping_healthcheck() { # ping_healthcheck success|fail
+  [ -n "$HEALTHCHECK_URL" ] || return 0
+  local url="$HEALTHCHECK_URL"
+  [ "$1" = fail ] && url="${HEALTHCHECK_URL%/}/fail"
+  curl -fsS -m 10 --retry 3 -o /dev/null "$url" || log "ATTENTION : le ping de supervision a échoué"
+}
+
+on_exit() {
+  local rc=$?
+  rm -rf "$TMP_DIR"
+  if [ "$RECORDING" = 1 ] && [ "$SUCCEEDED" = 0 ]; then
+    [ -n "$FAIL_MSG" ] || FAIL_MSG="échec inattendu pendant l'étape « $STEP » (code $rc)"
+    write_status failed "$FAIL_MSG" || true
+    ping_healthcheck fail
+  fi
+}
+
+# ---------------------------------------------------------------- checks
+
+check_schema() { # returns normally when the two databases have exactly the same structure
+  local remote_sha local_sha
+  [ -r "$FINGERPRINT_SQL" ] || die "fichier introuvable : $FINGERPRINT_SQL"
+  remote_sha=$(remote sql-sha) || die "impossible de joindre le primaire (sql-sha)"
+  local_sha=$(sha256sum "$FINGERPRINT_SQL" | cut -d' ' -f1)
+  [ "$remote_sha" = "$local_sha" ] || die "fingerprint.sql n'est pas identique sur le primaire et sur la réplique : recopiez-le des deux côtés"
+
+  remote db-schema >"$TMP_DIR/primary.schema" || die "lecture de la structure du primaire impossible"
+  local_schema >"$TMP_DIR/replica.schema" || die "lecture de la structure de la réplique impossible"
+  if ! diff -u --label primaire --label réplique "$TMP_DIR/primary.schema" "$TMP_DIR/replica.schema" >"$TMP_DIR/schema.diff"; then
+    log "Les structures diffèrent (extrait) :"
+    head -n 40 "$TMP_DIR/schema.diff" >&2
+    die "la réplique n'a pas la même structure que le primaire : appliquez les mêmes migrations, avec les mêmes versions d'images, puis relancez"
+  fi
+}
+
+check_guard() { # refuse to replace a healthy replica by a suspiciously emptier primary
+  local table n src_n dst_n src_raw dst_raw
+  declare -A src dst
+  src_raw=$(remote db-counts) || die "comptage des lignes du primaire impossible"
+  dst_raw=$(local_counts) || die "comptage des lignes de la réplique impossible"
+  while read -r table n; do [ -n "${table:-}" ] && src[$table]="$n"; done <<<"$src_raw"
+  while read -r table n; do [ -n "${table:-}" ] && dst[$table]="$n"; done <<<"$dst_raw"
+  for table in "${guarded[@]}"; do
+    src_n="${src[$table]:-0}"
+    dst_n="${dst[$table]:-0}"
+    log "lignes $table : primaire $src_n, réplique $dst_n"
+    if [ "$dst_n" -ge 10 ] && [ $((src_n * 2)) -lt "$dst_n" ] && [ "$FORCE" != 1 ]; then
+      die "le primaire a perdu plus de la moitié de ses lignes dans $table ($dst_n → $src_n) : synchro refusée pour ne pas propager l'erreur. Vérifiez le primaire, ou relancez avec --force"
+    fi
+  done
+}
+
+# ---------------------------------------------------------------- steps
+
+fetch_db() {
+  local name partial
+  mkdir -p "$DUMP_DIR"
+  chmod 700 "$WORK_DIR" "$DUMP_DIR"
+  name="db-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
+  partial="$DUMP_DIR/$name.partial"
+  log "copie de la base depuis $PRIMARY_HOST…"
+  timeout "$DUMP_TIMEOUT" ssh "${SSH_ARGS[@]}" "$PRIMARY_USER@$PRIMARY_HOST" db-data >"$partial" \
+    || { rm -f "$partial"; die "la copie de la base a échoué ou dépassé ${DUMP_TIMEOUT}s"; }
+  gzip -t "$partial" 2>/dev/null || { rm -f "$partial"; die "copie de la base corrompue (archive incomplète)"; }
+  gzip -dc "$partial" | tail -n 5 | grep -q 'PostgreSQL database dump complete' \
+    || { rm -f "$partial"; die "copie de la base tronquée (fin de fichier absente)"; }
+  mv "$partial" "$DUMP_DIR/$name"
+  LAST_DUMP="$name"
+  log "copie reçue : $name ($(du -h "$DUMP_DIR/$name" | cut -f1))"
+}
+
+sync_files() {
+  local rsh rc=0
+  mkdir -p "$STORAGE_DEST"
+  rsh="ssh $(printf '%q ' "${SSH_ARGS[@]}")"
+  log "copie des fichiers vers $STORAGE_DEST…"
+  # -X keeps the extended attributes Supabase storage uses for content types.
+  rsync -rlptDX --delete-after --max-delete="$MAX_FILE_DELETIONS" --timeout="$RSYNC_TIMEOUT" \
+    -e "$rsh" "$PRIMARY_USER@$PRIMARY_HOST:/" "$STORAGE_DEST/" || rc=$?
+  case "$rc" in
+    0) ;;
+    25) die "plus de $MAX_FILE_DELETIONS fichiers à supprimer : suppression en masse refusée, vérifiez le dossier du primaire" ;;
+    *) die "la copie des fichiers a échoué (rsync code $rc)" ;;
+  esac
+}
+
+restore_db() { # restore_db <dump.sql.gz>
+  local file="$1" tables
+  tables=$(lsql -c "select string_agg(format('%I.%I', schemaname, tablename), ', ' order by schemaname, tablename)
+                    from pg_tables
+                    where schemaname in ($(schema_list))
+                      and (schemaname || '.' || tablename) <> all ($(excluded_array))")
+  [ -n "$tables" ] || die "aucune table à restaurer sur la réplique : la pile y est-elle démarrée et migrée ?"
+  log "restauration dans la réplique (une seule transaction)…"
+  # Replica mode switches off foreign keys and our own triggers, so rows land exactly as they
+  # were on the primary (no duplicated profiles, no re-sent notifications). Any error rolls
+  # the whole thing back: the replica keeps its previous state.
+  {
+    echo "SET session_replication_role = replica;"
+    echo "TRUNCATE $tables;"
+    gzip -dc "$file"
+  } | "${psql_cmd[@]}" -X -q -v ON_ERROR_STOP=1 --single-transaction -o /dev/null \
+    || die "restauration échouée : la réplique est restée dans son état précédent"
+}
+
+prune() {
+  [ -d "$DUMP_DIR" ] || return 0
+  # Hourly copies for 3 days, then only the 03:00 UTC one, for 30 days.
+  find "$DUMP_DIR" -name 'db-*.sql.gz' -mmin +$((72 * 60)) ! -name 'db-????????T03*' -delete
+  find "$DUMP_DIR" -name 'db-*.sql.gz' -mmin +$((30 * 24 * 60)) -delete
+  find "$DUMP_DIR" -name '*.partial' -mmin +60 -delete
+}
+
+# ---------------------------------------------------------------- commands
+
+cmd_run() {
+  FORCE=0
+  local do_db=1 do_files=1
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force) FORCE=1 ;;
+      --db-only) do_files=0 ;;
+      --files-only) do_db=0 ;;
+      *) die "option inconnue : $1" ;;
+    esac
+    shift
+  done
+  [ -n "$PRIMARY_HOST" ] || die "PRIMARY_HOST n'est pas défini ($CONF)"
+
+  mkdir -p "$WORK_DIR"
+  exec 9>"$WORK_DIR/lock"
+  flock -n 9 || { log "une synchro est déjà en cours : rien à faire"; exit 0; }
+  RECORDING=1
+
+  if [ "$do_db" = 1 ]; then
+    STEP="comparaison des structures"; check_schema
+    STEP="garde-fou";                  check_guard
+    STEP="copie de la base";           fetch_db
+  fi
+  if [ "$do_files" = 1 ]; then
+    STEP="copie des fichiers";         sync_files
+  fi
+  if [ "$do_db" = 1 ]; then
+    STEP="restauration";               restore_db "$DUMP_DIR/$LAST_DUMP"
+  fi
+  STEP="nettoyage";                    prune
+
+  SUCCEEDED=1
+  write_status ok
+  ping_healthcheck success
+  log "synchro terminée en $(($(date +%s) - START_EPOCH)) s"
+}
+
+cmd_restore() {
+  local target="${1:-}" file answer=""
+  [ -n "$target" ] || die "usage : lsnb-sync restore <fichier.sql.gz | latest> [--yes]"
+  if [ "$target" = latest ]; then
+    file=$(find "$DUMP_DIR" -name 'db-*.sql.gz' 2>/dev/null | sort | tail -n 1)
+  elif [ -e "$target" ]; then
+    file="$target"
+  else
+    file="$DUMP_DIR/$target"
+  fi
+  if [ -z "$file" ] || [ ! -r "$file" ]; then die "copie introuvable : $target"; fi
+  gzip -t "$file" 2>/dev/null || die "copie illisible : $file"
+
+  mkdir -p "$WORK_DIR"
+  exec 9>"$WORK_DIR/lock"
+  flock -n 9 || die "une synchro est en cours : réessayez dans un instant"
+
+  if [ "${2:-}" != "--yes" ]; then
+    echo "Les données de la base de CETTE machine vont être remplacées par celles de :"
+    echo "  $file"
+    read -r -p "Continuer ? [oui/N] " answer
+    [ "$answer" = oui ] || die "annulé"
+  fi
+  restore_db "$file"
+  log "restauration terminée. Les fichiers du stockage ne sont pas touchés."
+}
+
+cmd_status() {
+  [ -r "$STATUS_FILE" ] || { echo "Aucune synchro enregistrée."; exit 1; }
+  local result last_success age_min error
+  result=$(status_value last_result)
+  last_success=$(status_value last_success)
+  error=$(status_value last_error)
+  if [ "${last_success:-0}" -gt 0 ]; then
+    age_min=$((($(date +%s) - last_success) / 60))
+    echo "Dernière synchro réussie : il y a ${age_min} min ($(date -u -d "@$last_success" +%FT%TZ))"
+  else
+    age_min=999999
+    echo "Aucune synchro réussie."
+  fi
+  echo "Dernière tentative : $result"
+  [ -z "$error" ] || echo "Dernière erreur : $error"
+  if [ "$age_min" -gt "$MAX_AGE_MIN" ] || [ "$result" != ok ]; then
+    echo "=> À SURVEILLER (seuil : ${MAX_AGE_MIN} min)"
+    exit 1
+  fi
+}
+
+cmd_doctor() {
+  local fails=0 warns=0 out
+  ok() { printf '  OK        %s\n' "$*"; }
+  warn() { printf '  ATTENTION %s\n' "$*"; warns=$((warns + 1)); }
+  fail() { printf '  ÉCHEC     %s\n' "$*"; fails=$((fails + 1)); }
+
+  echo "Configuration"
+  if [ -n "$PRIMARY_HOST" ]; then ok "primaire : $PRIMARY_USER@$PRIMARY_HOST:$SSH_PORT"; else fail "PRIMARY_HOST n'est pas défini ($CONF)"; fi
+  if [ -r "$SSH_KEY" ]; then ok "clé SSH : $SSH_KEY"; else fail "clé SSH illisible : $SSH_KEY"; fi
+  if [ -r "$FINGERPRINT_SQL" ]; then ok "fingerprint.sql présent"; else fail "fingerprint.sql introuvable : $FINGERPRINT_SQL"; fi
+  [ "$fails" -eq 0 ] || { echo; echo "$fails échec(s) : corrigez la configuration d'abord."; exit 1; }
+
+  echo "Primaire"
+  if out=$(remote ping 2>&1); then ok "connexion SSH ($out)"; else fail "connexion SSH impossible : $out"; echo; exit 1; fi
+  if remote db-version >"$TMP_DIR/primary.version" 2>&1; then ok "base du primaire joignable (PostgreSQL $(cat "$TMP_DIR/primary.version"))"; else fail "base du primaire illisible : $(cat "$TMP_DIR/primary.version")"; fi
+
+  echo "Réplique"
+  if out=$(lsql -c "show server_version" 2>&1); then
+    ok "base locale joignable (PostgreSQL $out)"
+    if [ "${out%%.*}" = "$(cut -d. -f1 "$TMP_DIR/primary.version" 2>/dev/null)" ]; then
+      ok "même version majeure de PostgreSQL"
+    else
+      warn "versions majeures de PostgreSQL différentes : utilisez les mêmes images des deux côtés"
+    fi
+  else
+    fail "base locale illisible : $out"
+  fi
+  if out=$(lsql -c "begin; set session_replication_role = replica; rollback;" 2>&1); then
+    ok "droit de suspendre les triggers pendant la restauration"
+  else
+    fail "droit session_replication_role manquant : $out (essayez LOCAL_PSQL avec -U supabase_admin)"
+  fi
+  if out=$(lsql -c "select coalesce(bool_and(has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'TRUNCATE') and has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'INSERT')), false)
+                    from pg_tables where schemaname in ($(schema_list)) and (schemaname || '.' || tablename) <> all ($(excluded_array))" 2>&1) && [ "$out" = t ]; then
+    ok "droit de vider et de remplir toutes les tables synchronisées"
+  else
+    fail "l'utilisateur de LOCAL_PSQL ne peut pas vider/remplir toutes les tables ($out) : utilisez un rôle propriétaire, par exemple -U supabase_admin"
+  fi
+
+  echo "Compatibilité"
+  if (check_schema) 2>"$TMP_DIR/doctor.schema"; then ok "structures identiques (colonnes, contraintes, règles, triggers, fonctions)"; else fail "$(tail -n 45 "$TMP_DIR/doctor.schema")"; fi
+  if out=$(remote db-counts 2>&1); then ok "lignes côté primaire : $(tr '\n' ';' <<<"$out")"; else fail "comptage impossible : $out"; fi
+
+  echo "Fichiers"
+  if out=$(remote storage-check 2>&1); then
+    if grep -q '^missing_dir' <<<"$out"; then
+      warn "le dossier de stockage du primaire n'existe pas (STORAGE_DIR dans /etc/lsnb-export.conf)"
+    else
+      ok "stockage du primaire : $(tr '\n' ' ' <<<"$out")"
+      [ "$(sed -n 's/^unreadable //p' <<<"$out")" = 0 ] || fail "des fichiers du primaire ne sont pas lisibles par l'utilisateur SSH : voir README (« permissions du stockage »)"
+    fi
+  else
+    fail "storage-check a échoué : $out"
+  fi
+  if mkdir -p "$STORAGE_DEST" && touch "$STORAGE_DEST/.lsnb-write-test" && rm -f "$STORAGE_DEST/.lsnb-write-test"; then ok "dossier de destination inscriptible : $STORAGE_DEST"; else fail "dossier de destination non inscriptible : $STORAGE_DEST"; fi
+  if command -v setfattr >/dev/null 2>&1; then
+    : >"$STORAGE_DEST/.lsnb-xattr-test"
+    if setfattr -n user.lsnb -v 1 "$STORAGE_DEST/.lsnb-xattr-test" 2>/dev/null; then ok "attributs étendus (xattr) pris en charge"; else warn "xattr non pris en charge sur ce disque : les types de fichiers pourraient se perdre"; fi
+    rm -f "$STORAGE_DEST/.lsnb-xattr-test"
+  else
+    warn "setfattr absent (paquet attr) : test xattr ignoré"
+  fi
+  local rsh
+  rsh="ssh $(printf '%q ' "${SSH_ARGS[@]}")"
+  if out=$(rsync -rlptDX --dry-run --delete-after --max-delete="$MAX_FILE_DELETIONS" --timeout=60 -e "$rsh" "$PRIMARY_USER@$PRIMARY_HOST:/" "$STORAGE_DEST/" 2>&1); then
+    ok "rsync (essai à blanc) accepté par le primaire"
+  else
+    fail "rsync refusé : $(tail -n 3 <<<"$out")"
+  fi
+
+  echo "Disque"
+  mkdir -p "$WORK_DIR"
+  local free_kb
+  free_kb=$(df -Pk "$WORK_DIR" | awk 'NR==2 {print $4}')
+  if [ "${free_kb:-0}" -gt 2097152 ]; then ok "espace libre : $((free_kb / 1024)) Mo"; else warn "moins de 2 Go libres dans $WORK_DIR"; fi
+
+  echo
+  if [ "$fails" -gt 0 ]; then echo "$fails échec(s), $warns avertissement(s) : la synchro ne doit pas être activée."; exit 1; fi
+  echo "Tout est prêt ($warns avertissement(s))."
+}
+
+trap on_exit EXIT
+
+case "${1:-}" in
+  run) shift; cmd_run "$@" ;;
+  status) cmd_status ;;
+  doctor) cmd_doctor ;;
+  restore) shift; cmd_restore "$@" ;;
+  *) echo "usage : lsnb-sync doctor | run [--db-only|--files-only|--force] | status | restore <fichier|latest> [--yes]" >&2; exit 2 ;;
+esac

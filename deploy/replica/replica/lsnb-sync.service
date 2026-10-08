@@ -1,0 +1,12 @@
+[Unit]
+Description=Copy the live Supabase (database and files) onto this replica
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+ExecStart=/usr/local/bin/lsnb-sync run
+# A stuck run must not pile up behind the next one.
+TimeoutStartSec=45min
+Nice=10

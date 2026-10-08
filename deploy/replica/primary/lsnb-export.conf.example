@@ -1,0 +1,12 @@
+# /etc/lsnb-export.conf  (VM1, the live Supabase) — every line is optional, these are the defaults.
+# Adjust to your docker-compose: container name, database user, storage folder.
+DB_PSQL="docker exec -i supabase-db psql -U postgres -d postgres"
+DB_PGDUMP="docker exec -i supabase-db pg_dump -U postgres -d postgres"
+STORAGE_DIR="/home/ubuntu/supabase/docker/volumes/storage"
+
+# What is copied. Migration bookkeeping tables are left alone on purpose: each stack keeps its own.
+SYNC_SCHEMAS="auth public storage"
+EXCLUDE_TABLES="auth.schema_migrations storage.migrations"
+
+# Row counts used as a safety net: a replica is never overwritten by a primary that lost half its rows.
+GUARD_TABLES="auth.users public.profiles"

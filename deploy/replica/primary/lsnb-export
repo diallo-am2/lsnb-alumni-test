@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Forced command of the replica's SSH key, installed on the PRIMARY (the live VM).
+#
+#   authorized_keys:
+#     restrict,from="<replica ip>",command="/usr/local/bin/lsnb-export" ssh-ed25519 AAAA… lsnb-replica
+#
+# With that line the key can do exactly what is below and nothing else: no shell, no
+# port forwarding, no write access. It reads the database and the storage folder.
+set -Eeuo pipefail
+
+CONF="${LSNB_EXPORT_CONF:-/etc/lsnb-export.conf}"
+# shellcheck source=/dev/null
+[ -r "$CONF" ] && . "$CONF"
+
+: "${DB_PSQL:=docker exec -i supabase-db psql -U postgres -d postgres}"
+: "${DB_PGDUMP:=docker exec -i supabase-db pg_dump -U postgres -d postgres}"
+: "${STORAGE_DIR:=/home/ubuntu/supabase/docker/volumes/storage}"
+: "${SYNC_SCHEMAS:=auth public storage}"
+: "${EXCLUDE_TABLES:=auth.schema_migrations storage.migrations}"
+: "${GUARD_TABLES:=auth.users public.profiles}"
+: "${FINGERPRINT_SQL:=/usr/local/share/lsnb-replica/fingerprint.sql}"
+
+read -r -a psql_cmd <<<"$DB_PSQL"
+read -r -a dump_cmd <<<"$DB_PGDUMP"
+read -r -a schemas <<<"$SYNC_SCHEMAS"
+read -r -a excluded <<<"$EXCLUDE_TABLES"
+read -r -a guarded <<<"$GUARD_TABLES"
+
+schema_list() {
+  local out="" s
+  for s in "${schemas[@]}"; do out+="${out:+,}'${s}'"; done
+  printf '%s' "$out"
+}
+
+cmd="${SSH_ORIGINAL_COMMAND:-${1:-}}"
+
+case "$cmd" in
+  ping)
+    echo "ok $(hostname)"
+    ;;
+  db-version)
+    "${psql_cmd[@]}" -X -At -c "show server_version"
+    ;;
+  sql-sha)
+    sha256sum "$FINGERPRINT_SQL" | cut -d' ' -f1
+    ;;
+  db-schema)
+    "${psql_cmd[@]}" -X -At -v ON_ERROR_STOP=1 -v "schemas=$(schema_list)" -f - <"$FINGERPRINT_SQL"
+    ;;
+  db-counts)
+    sql=""
+    for t in "${guarded[@]}"; do
+      sql+="${sql:+ union all }select '${t}' as t, count(*) as n from ${t}"
+    done
+    "${psql_cmd[@]}" -X -At -F ' ' -v ON_ERROR_STOP=1 -c "$sql"
+    ;;
+  db-data)
+    flags=(--data-only --no-owner --no-privileges)
+    for s in "${schemas[@]}"; do flags+=(-n "$s"); done
+    for t in "${excluded[@]}"; do flags+=(-T "$t"); done
+    "${dump_cmd[@]}" "${flags[@]}" | gzip -c -1
+    ;;
+  storage-check)
+    [ -d "$STORAGE_DIR" ] || { echo "missing_dir 1"; exit 0; }
+    echo "unreadable $(find "$STORAGE_DIR" ! -readable 2>/dev/null | wc -l)"
+    echo "files $(find "$STORAGE_DIR" -type f 2>/dev/null | wc -l)"
+    echo "bytes $(du -sb "$STORAGE_DIR" 2>/dev/null | cut -f1)"
+    ;;
+  "rsync --server --sender "*)
+    # rrsync (shipped with rsync) refuses anything outside the folder and any write.
+    export SSH_ORIGINAL_COMMAND="$cmd"
+    exec rrsync -ro "$STORAGE_DIR"
+    ;;
+  *)
+    echo "lsnb-export: commande refusée" >&2
+    exit 126
+    ;;
+esac
