@@ -1,0 +1,11 @@
+[Unit]
+Description=Check that the off-site backups exist, are recent and intact
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+ExecStart=/usr/local/bin/lsnb-backup verify
+TimeoutStartSec=1h
+Nice=15

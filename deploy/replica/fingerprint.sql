@@ -1,6 +1,12 @@
 -- One line per structural fact of the synced schemas (columns, constraints, policies,
 -- triggers, functions). Two databases can exchange data only when both lists are identical.
 -- Run with:  psql -At -v schemas="'auth','public','storage'" -f fingerprint.sql
+--
+-- The search_path is pinned on purpose: PostgreSQL prints names without their schema when the
+-- schema is on the caller's search_path, so the same table would read differently depending on
+-- the role that asks (postgres on the primary, supabase_admin on the replica).
+set search_path = pg_catalog;
+
 select line
 from (
   select 'col ' || c.table_schema || '.' || c.table_name || '.' || c.column_name || ' '

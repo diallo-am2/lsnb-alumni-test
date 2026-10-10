@@ -80,6 +80,9 @@ create policy "members read" on public.profiles for select using (true);
 SQL
 src -q -f "$T/ddl.sql"
 dst -q -f "$T/ddl.sql"
+# In real life the two sides are queried by different roles with different search_path
+# (postgres on the primary, supabase_admin on the replica). That must not matter.
+dst -q -c "alter database postgres set search_path = public, auth, storage"
 
 seed_source() {
   src -q -o /dev/null <<'SQL'
@@ -149,6 +152,12 @@ case "\${LSNB_TEST_MODE:-}:\$SSH_ORIGINAL_COMMAND" in
 esac
 EOF
 chmod +x "$T/bin/ssh"
+cat >"$T/bin/rsync" <<EOF
+#!/usr/bin/env bash
+if [ -n "\${LSNB_TEST_RSYNC_EXIT:-}" ]; then echo "rsync: simulated failure" >&2; exit "\$LSNB_TEST_RSYNC_EXIT"; fi
+exec /usr/bin/rsync "\$@"
+EOF
+chmod +x "$T/bin/rsync"
 touch "$T/key"
 cat >"$T/sync.env" <<EOF
 PRIMARY_HOST="fake-primary"
@@ -168,8 +177,24 @@ count() { "$1" -c "select count(*) from $2"; }
 run_sync() { "$SYNC" run "$@" >"$T/last.log" 2>&1; }
 
 echo
+echo "0. Le contrôle de structure ne dépend pas du search_path du rôle"
+fp() { "$1" -v "schemas='auth','public','storage'" -f "$ROOT/fingerprint.sql"; }
+if diff <(fp src) <(fp dst) >/dev/null; then pass "même empreinte avec deux search_path différents"; else fail "l'empreinte dépend du search_path"; diff <(fp src) <(fp dst) | head -6 || true; fi
+
 echo "1. Diagnostic"
 if "$SYNC" doctor >"$T/doctor.log" 2>&1; then pass "doctor : tout est prêt"; else fail "doctor a échoué"; cat "$T/doctor.log"; fi
+
+echo "1b. Destination aux droits mauvais (dossiers créés par Docker en root)"
+chmod 555 "$T/dst-storage/stub/avatars"
+if "$SYNC" doctor >"$T/doctor2.log" 2>&1; then fail "doctor aurait dû signaler le dossier verrouillé"; else pass "doctor signale le dossier verrouillé"; fi
+if grep -q "non inscriptibles" "$T/doctor2.log" && grep -q "chown -R" "$T/doctor2.log"; then pass "avec la commande de réparation"; else fail "message incomplet"; fi
+chmod 755 "$T/dst-storage/stub/avatars"
+users_before="$(users_sum dst)"
+# rsync reports code 23 when it cannot write on the destination (what happened on the A1).
+if LSNB_TEST_RSYNC_EXIT=23 run_sync; then fail "run aurait dû échouer"; else pass "run échoue au lieu de laisser une copie à moitié faite"; fi
+if grep -q "chown -R" "$T/last.log"; then pass "message explicite avec la commande de réparation"; else fail "message sans réparation"; fi
+expect "$users_before" "$(users_sum dst)" "la base de la réplique n'a pas bougé (les fichiers passent avant la base)"
+rm -f "$T"/work/dumps/db-*.sql.gz
 
 echo "2. Première synchro"
 if run_sync; then pass "run termine sans erreur"; else fail "run a échoué"; cat "$T/last.log"; fi

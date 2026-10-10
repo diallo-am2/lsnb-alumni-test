@@ -96,6 +96,11 @@ lsnb-sync doctor
 `doctor` ne modifie rien. Il vérifie la connexion, les versions, les droits, la **compatibilité des
 structures** et que `rsync` est accepté. Corrigez chaque ligne `ÉCHEC` avant de continuer.
 
+Quand les structures diffèrent, chaque ligne est préfixée par son côté : `primaire : …` n'existe (ou
+n'est écrite ainsi) que sur VM1, `réplique : …` que sur l'A1. Une colonne ou une règle présente d'un
+seul côté signifie qu'une migration manque sur l'autre. Le contrôle ne dépend pas du rôle PostgreSQL
+utilisé de chaque côté (`postgres`, `supabase_admin`…).
+
 ### Première synchro, puis automatique
 
 ```bash

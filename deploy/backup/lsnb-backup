@@ -1,0 +1,408 @@
+#!/usr/bin/env bash
+# lsnb-backup — encrypted off-site backups of the live Supabase: database, files, configuration.
+#
+#   lsnb-backup doctor [--read-only]   check everything and write/read/delete one tiny test object
+#   lsnb-backup run                    make the backup and upload it
+#   lsnb-backup verify                 prove the latest backups exist, are recent and intact
+#   lsnb-backup list                   what is stored
+#   lsnb-backup fetch <name> [dest]    download one backup (checksum verified)
+#   lsnb-backup restore-test <name|file> --identity <key.txt>
+#                                      decrypt with the PRIVATE key and check the content (restores nothing)
+#   lsnb-backup status                 outcome of the last run on this machine
+#
+# Backups are encrypted with age PUBLIC keys: this machine can write them but never read them.
+# The private key lives offline with the team (see README).
+set -Eeuo pipefail
+
+CONF="${LSNB_BACKUP_CONF:-$HOME/.config/lsnb-backup/backup.env}"
+# shellcheck source=/dev/null
+[ -r "$CONF" ] && . "$CONF"
+
+: "${AGE_RECIPIENT:=}"
+: "${REMOTE:=}"
+: "${PREFIX:=lsnb}"
+: "${PRIV_CMD:=}"
+: "${DB_PGDUMP:=docker exec -i supabase-db pg_dump -U postgres -d postgres}"
+: "${STORAGE_DIR:=$HOME/supabase/docker/volumes/storage}"
+: "${CONFIG_DIR:=$HOME/supabase/docker}"
+: "${CONFIG_EXCLUDES:=./volumes/db/data ./volumes/storage ./volumes/logs}"
+: "${EXTRA_PATHS:=}"
+: "${SYNC_SCHEMAS:=auth public storage}"
+: "${EXCLUDE_TABLES:=auth.schema_migrations storage.migrations}"
+: "${WORK_DIR:=$HOME/lsnb-backup}"
+: "${KEEP_DAYS:=30}"
+: "${KEEP_MONTHLY_DAYS:=400}"
+: "${MAX_PRUNE:=200}"
+: "${MAX_AGE_HOURS:=30}"
+: "${FULL_EVERY_DAYS:=7}"
+: "${VERIFY_KINDS:=db storage config extra}"
+: "${RCLONE_FLAGS:=}"
+: "${HEALTHCHECK_URL:=}"
+: "${VERIFY_HEALTHCHECK_URL:=}"
+
+read -r -a recipients <<<"$AGE_RECIPIENT"
+read -r -a priv <<<"$PRIV_CMD"
+read -r -a dump_cmd <<<"$DB_PGDUMP"
+read -r -a schemas <<<"$SYNC_SCHEMAS"
+read -r -a excluded <<<"$EXCLUDE_TABLES"
+read -r -a config_excludes <<<"$CONFIG_EXCLUDES"
+read -r -a extra_paths <<<"$EXTRA_PATHS"
+read -r -a rclone_flags <<<"$RCLONE_FLAGS"
+read -r -a verify_kinds <<<"$VERIFY_KINDS"
+
+age_args=()
+for r in "${recipients[@]}"; do age_args+=(-r "$r"); done
+
+STATUS_FILE="$WORK_DIR/status"
+TMP_DIR=$(mktemp -d)
+STEP="démarrage"
+FAIL_MSG=""
+RECORDING=0
+SUCCEEDED=0
+START_EPOCH=$(date +%s)
+TS=$(date -u +%Y%m%dT%H%M%SZ)
+TAR_OPTS=(--sort=name --owner=0 --group=0 --numeric-owner --xattrs --xattrs-include='user.*'
+  --pax-option='exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime')
+
+log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >&2; }
+die() { FAIL_MSG="$*"; log "ÉCHEC : $*"; exit 1; }
+rc() { rclone "${rclone_flags[@]}" "$@"; }
+
+status_value() {
+  if [ -r "$STATUS_FILE" ]; then sed -n "s/^$1=//p" "$STATUS_FILE" | head -n 1; fi
+}
+
+write_status() { # write_status ok|failed message
+  local result="$1" message="${2:-}" now last_success
+  now=$(date +%s)
+  last_success=$(status_value last_success)
+  [ "$result" = ok ] && last_success="$now"
+  mkdir -p "$WORK_DIR"
+  {
+    echo "last_attempt=$now"
+    echo "last_result=$result"
+    echo "last_success=${last_success:-0}"
+    echo "last_error=${message//$'\n'/ }"
+    echo "duration_s=$((now - START_EPOCH))"
+  } >"$STATUS_FILE.tmp"
+  mv "$STATUS_FILE.tmp" "$STATUS_FILE"
+}
+
+ping_url() { # ping_url <base-url> success|fail
+  [ -n "$1" ] || return 0
+  local url="$1"
+  [ "$2" = fail ] && url="${1%/}/fail"
+  curl -fsS -m 10 --retry 3 -o /dev/null "$url" || log "ATTENTION : le ping de supervision a échoué"
+}
+
+on_exit() {
+  local code=$?
+  rm -rf "$TMP_DIR"
+  if [ "$RECORDING" = 1 ] && [ "$SUCCEEDED" = 0 ]; then
+    [ -n "$FAIL_MSG" ] || FAIL_MSG="échec inattendu pendant l'étape « $STEP » (code $code)"
+    write_status failed "$FAIL_MSG" || true
+    ping_url "$HEALTHCHECK_URL" fail
+  fi
+}
+
+need_config() {
+  [ "${#recipients[@]}" -gt 0 ] || die "AGE_RECIPIENT n'est pas défini ($CONF) : collez-y la clé PUBLIQUE age (age1…)"
+  [ -n "$REMOTE" ] || die "REMOTE n'est pas défini ($CONF), par exemple « r2:lsnb-backups » ou un dossier local « /home/ubuntu/lsnb-backups »"
+}
+
+encrypt_to() { age "${age_args[@]}" -o "$1"; } # stdin -> encrypted file
+
+upload() { # upload <encrypted file>
+  local file="$1" name
+  name=$(basename "$file")
+  printf '%s\n' "$(sha256sum "$file" | cut -d' ' -f1)" >"$file.sha256"
+  rc copyto "$file" "$REMOTE/$PREFIX/$name" || die "envoi de $name impossible (réseau, jeton ou bucket ?)"
+  # The checksum goes last: its presence means the backup is complete.
+  rc copyto "$file.sha256" "$REMOTE/$PREFIX/$name.sha256" || die "envoi de $name.sha256 impossible"
+  log "envoyé : $name ($(du -h "$file" | cut -f1))"
+}
+
+sha_of_remote() { rc cat "$REMOTE/$PREFIX/$1.sha256" 2>/dev/null | tr -d '[:space:]'; }
+
+# ---------------------------------------------------------------- run
+
+backup_db() {
+  local raw="$TMP_DIR/db.sql.gz" out="$TMP_DIR/db-$TS.sql.gz.age" flags=(--data-only --no-owner --no-privileges) s t
+  for s in "${schemas[@]}"; do flags+=(-n "$s"); done
+  for t in "${excluded[@]}"; do flags+=(-T "$t"); done
+  log "dump de la base…"
+  "${dump_cmd[@]}" "${flags[@]}" | gzip -c >"$raw" || die "le dump de la base a échoué (DB_PGDUMP ?)"
+  gzip -t "$raw" 2>/dev/null || die "dump de la base corrompu"
+  gzip -dc "$raw" | tail -n 5 | grep -q 'PostgreSQL database dump complete' || die "dump de la base tronqué"
+  encrypt_to "$out" <"$raw" || die "chiffrement impossible : la clé publique est-elle valide ?"
+  upload "$out"
+}
+
+backup_tree() { # backup_tree <kind> <base dir> <path…>   (tar excludes come from $EXCLUDE_ARGS)
+  local kind="$1" base="$2" tar_file="$TMP_DIR/$1.tar" out="$TMP_DIR/$1-$TS.tar.gz.age" fp last_fp last_at now code=0
+  shift 2
+  "${priv[@]}" tar "${TAR_OPTS[@]}" -C "$base" "${EXCLUDE_ARGS[@]}" -cf - "$@" >"$tar_file" || code=$?
+  # tar exits 1 when a file changed while being read: fine for a live folder, the next run catches up.
+  if [ "$code" = 1 ]; then log "ATTENTION : $kind a changé pendant la lecture (archive tout de même utilisable)"; code=0; fi
+  [ "$code" = 0 ] || die "l'archive $kind a échoué (tar code $code) : droits de lecture ? (PRIV_CMD)"
+
+  fp=$(sha256sum "$tar_file" | cut -d' ' -f1)
+  last_fp=$(cat "$WORK_DIR/last-$kind.fp" 2>/dev/null || true)
+  last_at=$(cat "$WORK_DIR/last-$kind.at" 2>/dev/null || echo 0)
+  now=$(date +%s)
+  if [ "$fp" = "$last_fp" ] && [ $((now - last_at)) -lt $((FULL_EVERY_DAYS * 86400)) ]; then
+    log "$kind : inchangé depuis le dernier envoi, rien à envoyer"
+    return 0
+  fi
+  gzip -c "$tar_file" | encrypt_to "$out" || die "chiffrement de $kind impossible"
+  upload "$out"
+  printf '%s\n' "$fp" >"$WORK_DIR/last-$kind.fp"
+  printf '%s\n' "$now" >"$WORK_DIR/last-$kind.at"
+}
+
+prune_remote() {
+  # Recent history daily, then one backup per month (the ones made on the 1st) for longer.
+  rc delete "$REMOTE/$PREFIX" --min-age "${KEEP_DAYS}d" --exclude '*-??????01T*' --max-delete "$MAX_PRUNE" \
+    || log "ATTENTION : nettoyage des anciennes sauvegardes incomplet"
+  rc delete "$REMOTE/$PREFIX" --min-age "${KEEP_MONTHLY_DAYS}d" --max-delete "$MAX_PRUNE" \
+    || log "ATTENTION : nettoyage des plus anciennes sauvegardes incomplet"
+}
+
+cmd_run() {
+  need_config
+  mkdir -p "$WORK_DIR"
+  chmod 700 "$WORK_DIR"
+  exec 9>"$WORK_DIR/lock"
+  flock -n 9 || { log "une sauvegarde est déjà en cours : rien à faire"; exit 0; }
+  RECORDING=1
+
+  STEP="base de données";  backup_db
+  STEP="fichiers";         EXCLUDE_ARGS=(); backup_tree storage "$STORAGE_DIR" .
+  STEP="configuration"
+  EXCLUDE_ARGS=(); local e
+  for e in "${config_excludes[@]}"; do EXCLUDE_ARGS+=("--exclude=$e"); done
+  backup_tree config "$CONFIG_DIR" .
+  if [ "${#extra_paths[@]}" -gt 0 ]; then
+    STEP="fichiers annexes"; EXCLUDE_ARGS=()
+    local rel=() p
+    for p in "${extra_paths[@]}"; do rel+=("${p#/}"); done
+    backup_tree extra / "${rel[@]}"
+  fi
+  STEP="nettoyage";        prune_remote
+
+  SUCCEEDED=1
+  write_status ok
+  ping_url "$HEALTHCHECK_URL" success
+  log "sauvegarde terminée en $(($(date +%s) - START_EPOCH)) s"
+}
+
+# ---------------------------------------------------------------- verify / list / fetch
+
+latest_of() { # latest_of <kind> <listing>
+  grep -E "^$1-[0-9]{8}T[0-9]{6}Z\.(sql|tar)\.gz\.age$" <<<"$2" | sort | tail -n 1 || true
+}
+
+epoch_of() { # epoch_of <backup name>
+  local ts="${1#*-}"
+  ts="${ts%%.*}"
+  date -u -d "${ts:0:4}-${ts:4:2}-${ts:6:2} ${ts:9:2}:${ts:11:2}:${ts:13:2}" +%s
+}
+
+download_checked() { # download_checked <name> <dest>; returns non-zero with a message on stderr
+  local name="$1" dest="$2" expected actual
+  expected=$(sha_of_remote "$name")
+  [ -n "$expected" ] || { echo "somme de contrôle absente pour $name (envoi incomplet ?)" >&2; return 1; }
+  rc copyto "$REMOTE/$PREFIX/$name" "$dest" 2>/dev/null || { echo "téléchargement de $name impossible" >&2; return 1; }
+  actual=$(sha256sum "$dest" | cut -d' ' -f1)
+  [ "$actual" = "$expected" ] || { echo "$name est corrompu (somme de contrôle différente)" >&2; return 1; }
+  [ "$(head -c 21 "$dest")" = "age-encryption.org/v1" ] || { echo "$name n'est pas un fichier chiffré age" >&2; return 1; }
+}
+
+cmd_verify() {
+  need_config
+  local listing kind latest max age_s problems=0 now out
+  RECORDING=0
+  listing=$(rc lsf "$REMOTE/$PREFIX" --files-only 2>/dev/null) || die "impossible de lister $REMOTE/$PREFIX (jeton, réseau, bucket, ou aucune sauvegarde envoyée encore ?)"
+  now=$(date +%s)
+  for kind in "${verify_kinds[@]}"; do
+    if [ "$kind" = extra ] && [ "${#extra_paths[@]}" -eq 0 ]; then continue; fi
+    latest=$(latest_of "$kind" "$listing")
+    if [ -z "$latest" ]; then echo "  ÉCHEC  aucune sauvegarde « $kind »"; problems=$((problems + 1)); continue; fi
+    max=$(( (FULL_EVERY_DAYS + 1) * 86400 ))
+    [ "$kind" = db ] && max=$((MAX_AGE_HOURS * 3600))
+    age_s=$((now - $(epoch_of "$latest")))
+    if [ "$age_s" -gt "$max" ]; then
+      echo "  ÉCHEC  $latest a $((age_s / 3600)) h (limite : $((max / 3600)) h)"; problems=$((problems + 1)); continue
+    fi
+    if out=$(download_checked "$latest" "$TMP_DIR/$latest" 2>&1); then
+      echo "  OK     $latest ($((age_s / 3600)) h, intact, chiffré)"
+    else
+      echo "  ÉCHEC  $out"; problems=$((problems + 1))
+    fi
+    rm -f "$TMP_DIR/$latest"
+  done
+  if [ "$problems" -gt 0 ]; then
+    ping_url "$VERIFY_HEALTHCHECK_URL" fail
+    echo "$problems problème(s) : les sauvegardes ne sont pas fiables."
+    exit 1
+  fi
+  ping_url "$VERIFY_HEALTHCHECK_URL" success
+  echo "Sauvegardes à jour et intactes."
+}
+
+cmd_list() {
+  need_config
+  rc lsf "$REMOTE/$PREFIX" --files-only --format "sp" --separator "  " | sort -k2
+}
+
+cmd_fetch() {
+  need_config
+  local name="${1:-}" dest="${2:-./${1:-}}"
+  [ -n "$name" ] || die "usage : lsnb-backup fetch <nom> [destination]"
+  download_checked "$name" "$dest" || die "récupération échouée"
+  log "récupéré et vérifié : $dest"
+}
+
+cmd_restore_test() {
+  local target="${1:-}" identity="" file plain
+  shift || true
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --identity) identity="${2:-}"; shift ;;
+      *) die "option inconnue : $1" ;;
+    esac
+    shift
+  done
+  if [ -z "$target" ] || [ -z "$identity" ]; then die "usage : lsnb-backup restore-test <nom|fichier> --identity <cle-privee.txt>"; fi
+  [ -r "$identity" ] || die "clé privée illisible : $identity"
+  if [ -r "$target" ]; then
+    file="$target"
+  else
+    need_config
+    file="$TMP_DIR/$(basename "$target")"
+    download_checked "$(basename "$target")" "$file" || die "récupération échouée"
+  fi
+  plain="$TMP_DIR/plain"
+  age -d -i "$identity" -o "$plain" "$file" 2>"$TMP_DIR/age.err" || die "déchiffrement impossible : $(head -n 1 "$TMP_DIR/age.err") (mauvaise clé ?)"
+  case "$(basename "$file")" in
+    db-*.sql.gz.age)
+      gzip -t "$plain" || die "dump corrompu"
+      gzip -dc "$plain" | tail -n 5 | grep -q 'PostgreSQL database dump complete' || die "dump tronqué"
+      echo "OK : dump complet, $(gzip -dc "$plain" | grep -c '^COPY ') tables, $(gzip -dc "$plain" | wc -l) lignes"
+      ;;
+    *.tar.gz.age)
+      tar -tzf "$plain" >"$TMP_DIR/list" 2>/dev/null || die "archive corrompue"
+      echo "OK : archive lisible, $(wc -l <"$TMP_DIR/list") éléments"
+      head -n 5 "$TMP_DIR/list" | sed 's/^/      /'
+      ;;
+    *) die "type de sauvegarde inconnu : $file" ;;
+  esac
+  echo "Rien n'a été restauré : ce test vérifie seulement que la sauvegarde est déchiffrable et complète."
+}
+
+cmd_status() {
+  [ -r "$STATUS_FILE" ] || { echo "Aucune sauvegarde enregistrée sur cette machine."; exit 1; }
+  local result last_success age_h error
+  result=$(status_value last_result)
+  last_success=$(status_value last_success)
+  error=$(status_value last_error)
+  if [ "${last_success:-0}" -gt 0 ]; then
+    age_h=$((($(date +%s) - last_success) / 3600))
+    echo "Dernière sauvegarde réussie : il y a ${age_h} h ($(date -u -d "@$last_success" +%FT%TZ))"
+  else
+    age_h=999999
+    echo "Aucune sauvegarde réussie."
+  fi
+  echo "Dernière tentative : $result"
+  [ -z "$error" ] || echo "Dernière erreur : $error"
+  if [ "$age_h" -gt "$MAX_AGE_HOURS" ] || [ "$result" != ok ]; then echo "=> À SURVEILLER"; exit 1; fi
+}
+
+# ---------------------------------------------------------------- doctor
+
+cmd_doctor() {
+  local fails=0 warns=0 ro=0 out probe
+  if [ "${1:-}" = "--read-only" ]; then ro=1; fi
+  ok() { printf '  OK        %s\n' "$*"; }
+  warn() { printf '  ATTENTION %s\n' "$*"; warns=$((warns + 1)); }
+  fail() { printf '  ÉCHEC     %s\n' "$*"; fails=$((fails + 1)); }
+  RECORDING=0
+
+  echo "Outils"
+  local t
+  for t in age rclone tar gzip sha256sum flock; do
+    if command -v "$t" >/dev/null 2>&1; then ok "$t"; else fail "$t introuvable (sudo apt install age rclone)"; fi
+  done
+  echo "Configuration"
+  if [ "${#recipients[@]}" -gt 0 ]; then ok "clé(s) publique(s) age : ${#recipients[@]}"; else fail "AGE_RECIPIENT n'est pas défini ($CONF)"; fi
+  if [ -n "$REMOTE" ]; then ok "destination : $REMOTE/$PREFIX"; else fail "REMOTE n'est pas défini ($CONF)"; fi
+  [ "$fails" -eq 0 ] || { echo; echo "$fails échec(s) : corrigez la configuration d'abord."; exit 1; }
+
+  if out=$(printf test | age "${age_args[@]}" 2>&1 >/dev/null); then ok "le chiffrement avec cette clé publique fonctionne"; else fail "clé publique refusée par age : $out"; fi
+  if out=$(find "$HOME" -maxdepth 3 -type f -size -4k -exec grep -l 'AGE-SECRET-KEY-' {} + 2>/dev/null | head -n 1) && [ -n "$out" ]; then
+    warn "une clé PRIVÉE age semble présente sur cette machine ($out) : retirez-la, elle doit rester hors serveur"
+  else
+    ok "aucune clé privée age sur cette machine"
+  fi
+
+  echo "Destination"
+  case "$REMOTE" in
+    /*|./*) # local folder (no cloud): create it so that the first run works
+      if mkdir -p "$REMOTE/$PREFIX" 2>"$TMP_DIR/rc.err"; then ok "dossier local : $REMOTE/$PREFIX"; else fail "dossier local impossible à créer : $(tail -n 1 "$TMP_DIR/rc.err")"; fi ;;
+  esac
+  if rc lsf "$REMOTE" >/dev/null 2>"$TMP_DIR/rc.err"; then ok "bucket joignable"; else fail "bucket injoignable : $(tail -n 2 "$TMP_DIR/rc.err" | tr '\n' ' ')"; fi
+  if [ "$ro" = 0 ]; then
+    probe="doctor-test-$(date +%s).txt"
+    printf 'lsnb-backup doctor\n' >"$TMP_DIR/probe"
+    if rc copyto "$TMP_DIR/probe" "$REMOTE/$PREFIX/$probe" 2>"$TMP_DIR/rc.err" \
+      && [ "$(rc cat "$REMOTE/$PREFIX/$probe" 2>/dev/null)" = "lsnb-backup doctor" ] \
+      && rc deletefile "$REMOTE/$PREFIX/$probe" 2>/dev/null; then
+      ok "écriture, relecture et suppression d'un objet de test"
+    else
+      fail "écriture/relecture/suppression impossible : $(tail -n 2 "$TMP_DIR/rc.err" | tr '\n' ' ') (jeton « Object Read & Write » ? bucket ?)"
+    fi
+  else
+    ok "mode lecture seule : écriture non testée"
+  fi
+
+  if [ "$ro" = 0 ]; then
+    echo "Sources"
+    if "${dump_cmd[@]}" --schema-only --schema=public --no-owner >/dev/null 2>"$TMP_DIR/db.err"; then ok "base lisible (DB_PGDUMP)"; else fail "base illisible : $(tail -n 2 "$TMP_DIR/db.err" | tr '\n' ' ')"; fi
+    local dir
+    for dir in "$STORAGE_DIR" "$CONFIG_DIR"; do
+      if [ -d "$dir" ]; then
+        local unreadable
+        unreadable=$("${priv[@]}" find "$dir" ! -readable 2>/dev/null | wc -l)
+        if [ "$unreadable" -eq 0 ]; then ok "$dir lisible"; else fail "$unreadable élément(s) illisible(s) dans $dir : PRIV_CMD=\"sudo -n\" ?"; fi
+      else
+        fail "dossier introuvable : $dir"
+      fi
+    done
+    for dir in "${extra_paths[@]}"; do
+      if [ -e "$dir" ]; then ok "$dir présent"; else fail "chemin annexe introuvable : $dir"; fi
+    done
+    mkdir -p "$WORK_DIR"
+    local need_kb free_kb storage_kb
+    storage_kb=$("${priv[@]}" du -sk "$STORAGE_DIR" 2>/dev/null | cut -f1)
+    need_kb=$((${storage_kb:-0} * 2 + 102400))
+    free_kb=$(df -Pk "$WORK_DIR" | awk 'NR==2 {print $4}')
+    if [ "${free_kb:-0}" -gt "$need_kb" ]; then ok "espace de travail suffisant ($((free_kb / 1024)) Mo libres)"; else warn "espace de travail juste : $((free_kb / 1024)) Mo libres pour environ $((need_kb / 1024)) Mo nécessaires"; fi
+  fi
+
+  echo
+  if [ "$fails" -gt 0 ]; then echo "$fails échec(s), $warns avertissement(s) : ne planifiez pas encore la sauvegarde."; exit 1; fi
+  echo "Tout est prêt ($warns avertissement(s))."
+}
+
+trap on_exit EXIT
+
+case "${1:-}" in
+  run) cmd_run ;;
+  verify) cmd_verify ;;
+  list) cmd_list ;;
+  fetch) shift; cmd_fetch "$@" ;;
+  restore-test) shift; cmd_restore_test "$@" ;;
+  status) cmd_status ;;
+  doctor) shift; cmd_doctor "$@" ;;
+  *) echo "usage : lsnb-backup doctor [--read-only] | run | verify | list | fetch <nom> [dest] | restore-test <nom|fichier> --identity <cle> | status" >&2; exit 2 ;;
+esac

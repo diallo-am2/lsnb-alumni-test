@@ -1,0 +1,12 @@
+[Unit]
+Description=Encrypted off-site backup of the live Supabase
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+ExecStart=/usr/local/bin/lsnb-backup run
+TimeoutStartSec=2h
+Nice=15
+IOSchedulingClass=idle

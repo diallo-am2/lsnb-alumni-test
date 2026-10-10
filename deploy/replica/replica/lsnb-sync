@@ -133,8 +133,10 @@ check_schema() { # returns normally when the two databases have exactly the same
 
   remote db-schema >"$TMP_DIR/primary.schema" || die "lecture de la structure du primaire impossible"
   local_schema >"$TMP_DIR/replica.schema" || die "lecture de la structure de la réplique impossible"
-  if ! diff -u --label primaire --label réplique "$TMP_DIR/primary.schema" "$TMP_DIR/replica.schema" >"$TMP_DIR/schema.diff"; then
-    log "Les structures diffèrent (extrait) :"
+  # Only the lines that differ, each tagged with the side it comes from.
+  if ! diff --old-line-format='primaire : %L' --new-line-format='réplique : %L' --unchanged-line-format='' \
+    "$TMP_DIR/primary.schema" "$TMP_DIR/replica.schema" >"$TMP_DIR/schema.diff"; then
+    log "$(wc -l <"$TMP_DIR/schema.diff") ligne(s) de structure diffèrent (les 40 premières) :"
     head -n 40 "$TMP_DIR/schema.diff" >&2
     die "la réplique n'a pas la même structure que le primaire : appliquez les mêmes migrations, avec les mêmes versions d'images, puis relancez"
   fi
@@ -187,6 +189,7 @@ sync_files() {
   case "$rc" in
     0) ;;
     25) die "plus de $MAX_FILE_DELETIONS fichiers à supprimer : suppression en masse refusée, vérifiez le dossier du primaire" ;;
+    23|24) die "des fichiers n'ont pas pu être écrits dans $STORAGE_DEST (rsync code $rc), le plus souvent un problème de droits : sudo chown -R $(id -un): '$STORAGE_DEST' puis relancez" ;;
     *) die "la copie des fichiers a échoué (rsync code $rc)" ;;
   esac
 }
@@ -361,6 +364,10 @@ cmd_doctor() {
     fail "storage-check a échoué : $out"
   fi
   if mkdir -p "$STORAGE_DEST" && touch "$STORAGE_DEST/.lsnb-write-test" && rm -f "$STORAGE_DEST/.lsnb-write-test"; then ok "dossier de destination inscriptible : $STORAGE_DEST"; else fail "dossier de destination non inscriptible : $STORAGE_DEST"; fi
+  # Docker may have created sub-folders as root when the storage service first started.
+  local locked
+  locked=$(find "$STORAGE_DEST" ! -writable 2>/dev/null | head -n 3 | tr '\n' ' ')
+  if [ -z "$locked" ]; then ok "tout le contenu de la destination est inscriptible"; else fail "éléments non inscriptibles par $(id -un) dans la destination (ex. : $locked) : sudo chown -R $(id -un): '$STORAGE_DEST'"; fi
   if command -v setfattr >/dev/null 2>&1; then
     : >"$STORAGE_DEST/.lsnb-xattr-test"
     if setfattr -n user.lsnb -v 1 "$STORAGE_DEST/.lsnb-xattr-test" 2>/dev/null; then ok "attributs étendus (xattr) pris en charge"; else warn "xattr non pris en charge sur ce disque : les types de fichiers pourraient se perdre"; fi

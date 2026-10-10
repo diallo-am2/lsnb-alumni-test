@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily check of the off-site backups (run it on ANOTHER machine than the one that makes them)
+
+[Timer]
+OnCalendar=*-*-* 08:00:00 UTC
+RandomizedDelaySec=600
+Persistent=true
+
+[Install]
+WantedBy=timers.target
