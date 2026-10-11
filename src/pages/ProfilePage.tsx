@@ -20,6 +20,7 @@ import { alumniProfiles, getAlumniProfile, type AlumniProfile } from "../data/al
 import { toSafeProfileUrl } from "../lib/profileLinks";
 import { loadProfile } from "../lib/profileRepository";
 import { notifyRequestEvent } from "../lib/requestRepository";
+import { describeNewRequestError } from "../lib/requestValidation";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import { NotFoundPage } from "./NotFoundPage";
 
@@ -135,7 +136,7 @@ export function ProfilePage() {
         kind: "error",
         message: error.code === "23505"
           ? "Vous avez déjà une demande en attente auprès de cette personne."
-          : error.message,
+          : describeNewRequestError(error) ?? error.message,
       });
       return;
     }
