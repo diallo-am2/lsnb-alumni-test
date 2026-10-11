@@ -77,7 +77,7 @@ export function MyOpportunitiesPage() {
                         <RotateCcw aria-hidden="true" /> Rouvrir
                       </Button>
                     )}
-                    <Button variant="ghost" size="sm" disabled={busyId === item.id}
+                    <Button variant="quiet" size="sm" disabled={busyId === item.id}
                       onClick={() => {
                         if (window.confirm(`Supprimer définitivement « ${item.title} » ?`)) {
                           void run(item.id, () => deleteOpportunity(item.id));

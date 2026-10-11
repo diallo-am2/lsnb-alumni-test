@@ -117,7 +117,7 @@ export function RequestItem({ request, isNew, defaultEmail, busy, onAccept, onDe
       {request.status === "pending" && !received && (
         <div className="request-item__actions">
           <p className="request-item__note"><MessageCircle size={15} aria-hidden="true" /> En attente de la réponse de {person.firstName}.</p>
-          <Button size="sm" variant="ghost" disabled={busy}
+          <Button size="sm" variant="quiet" disabled={busy}
             onClick={() => {
               if (window.confirm("Retirer cette demande ?")) onWithdraw(request.id);
             }}>

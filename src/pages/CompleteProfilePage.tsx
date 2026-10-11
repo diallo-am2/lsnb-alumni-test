@@ -113,7 +113,7 @@ export function CompleteProfilePage() {
               <p className="account-form__login">Vous pourrez ajouter ou modifier votre photo depuis votre espace membre.</p>
             </form>
           )}
-          <div className="account-form"><Button variant="ghost" onClick={() => void signOut()} disabled={busy}><LogOut size={16} aria-hidden="true" /> Se déconnecter</Button></div>
+          <div className="account-form"><Button variant="quiet" onClick={() => void signOut()} disabled={busy}><LogOut size={16} aria-hidden="true" /> Se déconnecter</Button></div>
         </section>
       </div>
     </div>

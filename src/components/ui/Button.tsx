@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "../../lib/cn";
 
-type ButtonVariant = "primary" | "light" | "ghost" | "outline";
+type ButtonVariant = "primary" | "light" | "ghost" | "outline" | "quiet";
 type ButtonSize = "sm" | "md" | "lg";
 
 const buttonClass = (variant: ButtonVariant, size: ButtonSize) =>
