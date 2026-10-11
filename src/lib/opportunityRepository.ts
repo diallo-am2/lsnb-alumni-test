@@ -8,6 +8,7 @@ import {
 } from "../data/opportunities";
 import { canonicalCountry, cleanLinks, type OpportunityFormValues } from "./opportunityValidation";
 import { notifyRequestEvent } from "./requestRepository";
+import { describeNewRequestError } from "./requestValidation";
 import { describeUploadError } from "./uploadErrors";
 import { isSupabaseConfigured, supabase } from "./supabase";
 
@@ -323,6 +324,8 @@ export async function contactOpportunityAuthor(
     if (error.code === DUPLICATE_KEY) {
       throw new Error("Vous avez déjà un message en attente pour cette offre.");
     }
+    const friendly = describeNewRequestError(error);
+    if (friendly) throw new Error(friendly);
     throw error;
   }
   void notifyRequestEvent(data.id, "created");

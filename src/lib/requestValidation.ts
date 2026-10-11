@@ -58,3 +58,26 @@ export function formatPhone(phone: string) {
   return phone.replace(/^(\+\d{1,3})(\d+)$/, (_, code: string, rest: string) =>
     `${code} ${rest.replace(/(\d{2})(?=\d)/g, "$1 ")}`);
 }
+
+/**
+ * Friendly text for the errors raised by the database guards on new requests
+ * (supabase/migrations/202610110001_request_guards.sql). Returns null for any other error.
+ */
+export function describeNewRequestError(
+  error: { message?: string; hint?: string | null },
+  now: number = Date.now(),
+): string | null {
+  switch (error.message) {
+    case "request_cooldown": {
+      const until = error.hint ? Date.parse(error.hint) : Number.NaN;
+      const hours = Number.isNaN(until) ? 24 : Math.min(24, Math.max(1, Math.ceil((until - now) / 3_600_000)));
+      return `Cette personne a décliné votre précédente demande. Vous pourrez en envoyer une nouvelle dans ${hours} h.`;
+    }
+    case "recipient_unavailable":
+      return "Ce membre ne peut plus recevoir de demandes.";
+    case "invalid_new_request":
+      return "Cette demande n’a pas pu être envoyée. Rechargez la page et réessayez.";
+    default:
+      return null;
+  }
+}
