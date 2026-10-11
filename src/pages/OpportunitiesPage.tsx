@@ -116,12 +116,20 @@ export function OpportunitiesPage() {
 
             <label className="directory-filter-switch">
               <input type="checkbox" checked={remoteOnly} onChange={(event) => updateFilter("distance", event.target.checked)} />
-              <span>À distance uniquement</span>
+              <span className="directory-filter-switch__track" aria-hidden="true"><i /></span>
+              <span>
+                <b>À distance</b>
+                Offres sans déplacement
+              </span>
             </label>
 
             <label className="directory-filter-switch">
               <input type="checkbox" checked={includeExpired} onChange={(event) => updateFilter("expirees", event.target.checked)} />
-              <span>Inclure les offres expirées</span>
+              <span className="directory-filter-switch__track" aria-hidden="true"><i /></span>
+              <span>
+                <b>Offres expirées</b>
+                Afficher aussi les offres passées
+              </span>
             </label>
           </div>
         </aside>

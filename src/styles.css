@@ -423,6 +423,18 @@ textarea:focus-visible {
   color: var(--banco-light);
 }
 
+/* Secondary action on a LIGHT surface (the ghost variant is white: dark surfaces only). */
+.button--quiet {
+  background: transparent;
+  color: var(--ink);
+  border-color: rgba(12, 41, 72, 0.22);
+}
+
+.button--quiet:hover:not(:disabled) {
+  background: rgba(12, 41, 72, 0.06);
+  border-color: rgba(12, 41, 72, 0.5);
+}
+
 .button--outline {
   background: transparent;
   color: var(--ink);
@@ -2083,6 +2095,19 @@ textarea:focus-visible {
   margin-bottom: 28px;
 }
 
+/* No side visual on the offers hero: use the full width instead of a squeezed half column. */
+.opportunities-page .directory-hero {
+  min-height: clamp(420px, 38vw, 520px);
+}
+
+.opportunities-page .directory-hero__inner {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.opportunities-page .directory-hero h1 {
+  max-width: 1240px;
+}
+
 .directory-constellation {
   position: relative;
   z-index: 1;
@@ -3699,14 +3724,15 @@ textarea:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(340px, 0.75fr);
   align-items: center;
-  gap: clamp(54px, 9vw, 140px);
+  gap: clamp(40px, 6vw, 96px);
 }
 
 .member-page__intro h1 {
   margin: 14px 0 26px;
   color: var(--ink);
-  font-size: clamp(4rem, 8vw, 8.8rem);
-  line-height: 0.82;
+  font-size: clamp(3.2rem, 6.4vw, 6.6rem);
+  line-height: 0.92;
+  overflow-wrap: anywhere;
 }
 
 .member-page__intro > p:not(.eyebrow) {
@@ -3716,10 +3742,16 @@ textarea:focus-visible {
 }
 
 .member-page__actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;
+  max-width: 560px;
   margin-top: 36px;
+}
+
+.member-page__actions .button {
+  width: 100%;
+  white-space: nowrap;
 }
 
 .member-card {
@@ -3828,12 +3860,16 @@ textarea:focus-visible {
 
 .member-card__identity h2 {
   color: var(--ink);
-  font-size: clamp(1.5rem, 3vw, 2.2rem);
+  font-size: clamp(1.4rem, 2.2vw, 2rem);
+  line-height: 1.08;
+  overflow-wrap: anywhere;
 }
+
 
 .member-card__identity div > span {
   color: #6a7680;
   font-size: 0.72rem;
+  overflow-wrap: anywhere;
 }
 
 .member-card__status {
@@ -3856,7 +3892,8 @@ textarea:focus-visible {
 }
 
 .member-card > .button {
-  justify-self: start;
+  width: 100%;
+  margin-top: 4px;
 }
 
 /* Legal and footer */
@@ -4030,7 +4067,7 @@ textarea:focus-visible {
   }
 
   .member-page__grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
   }
 
@@ -4817,12 +4854,7 @@ textarea:focus-visible {
   }
 
   .member-page__actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .member-page__actions .button {
-    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .member-card__identity {

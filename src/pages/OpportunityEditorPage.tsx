@@ -393,7 +393,7 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
                       onChange={(event) => updateLink(index, "url", event.target.value)} {...invalid(`link-${index}-url`)} />
                     {error(`link-${index}-url`)}
                   </label>
-                  <Button variant="ghost" size="sm" aria-label={`Retirer le lien ${index + 1}`}
+                  <Button variant="quiet" size="sm" aria-label={`Retirer le lien ${index + 1}`}
                     onClick={() => set("extraLinks", values.extraLinks.filter((_, i) => i !== index))}>
                     <Trash2 aria-hidden="true" />
                   </Button>
@@ -462,7 +462,7 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
                     Remplacer
                     <input type="file" accept="application/pdf" onChange={handleDocument} />
                   </label>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setRemoveDocument(true)}>Retirer</Button>
+                  <Button type="button" variant="quiet" size="sm" onClick={() => setRemoveDocument(true)}>Retirer</Button>
                 </p>
               )}
               {newDocument && (
@@ -472,7 +472,7 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
                     {newDocument.name} <em>({formatFileSize(newDocument.size)})</em>
                     {attachedDocument && <> — remplacera « {attachedDocument.name} »</>}
                   </span>
-                  <Button type="button" variant="ghost" size="sm"
+                  <Button type="button" variant="quiet" size="sm"
                     onClick={() => {
                       setNewDocument(null);
                       setRemoveDocument(false);
@@ -485,7 +485,7 @@ function OpportunityForm({ initial, userId }: { initial: Opportunity | null; use
                 <p className="opp-media-editor__doc">
                   <FileText aria-hidden="true" />
                   <span>« {attachedDocument.name} » sera retiré à l’enregistrement.</span>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setRemoveDocument(false)}>Annuler</Button>
+                  <Button type="button" variant="quiet" size="sm" onClick={() => setRemoveDocument(false)}>Annuler</Button>
                 </p>
               )}
               {(!attachedDocument || removeDocument) && !newDocument && (

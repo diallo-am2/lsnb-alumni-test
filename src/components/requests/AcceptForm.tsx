@@ -85,7 +85,7 @@ export function AcceptForm({ firstName, defaultEmail, busy, onConfirm, onCancel 
 
         <div className="request-accept__actions">
           <Button type="submit" size="sm" disabled={busy}>Confirmer l’acceptation</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={onCancel}>Annuler</Button>
+          <Button type="button" size="sm" variant="quiet" onClick={onCancel}>Annuler</Button>
         </div>
       </fieldset>
     </form>

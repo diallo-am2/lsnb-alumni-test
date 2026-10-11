@@ -199,7 +199,7 @@ export function OpportunityPage() {
                   <Button variant="outline" onClick={() => openPanel("contact")} aria-expanded={panel === "contact"}>
                     <MessageSquare aria-hidden="true" /> Contacter l’auteur
                   </Button>
-                  <Button variant="ghost" onClick={() => openPanel("report")} aria-expanded={panel === "report"}>
+                  <Button variant="quiet" onClick={() => openPanel("report")} aria-expanded={panel === "report"}>
                     <Flag aria-hidden="true" /> Signaler
                   </Button>
                 </div>
