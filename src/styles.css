@@ -1651,6 +1651,34 @@ textarea:focus-visible {
   gap: 7px;
 }
 
+.alumni-card__links {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.alumni-card__links .alumni-card__social-link {
+  display: inline-flex;
+  align-items: center;
+  width: 28px;
+  height: 28px;
+  justify-content: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+
+.alumni-card__links .alumni-card__social-link svg {
+  width: 14px;
+  height: 14px;
+}
+
+.alumni-card__links .alumni-card__social-link:hover,
+.alumni-card__links .alumni-card__social-link:focus-visible {
+  background: var(--ink);
+  color: var(--chalk);
+}
+
 .alumni-card__footer a {
   font-weight: 750;
 }

@@ -99,7 +99,7 @@ export async function loadProfiles() {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, first_name, last_name, member_role, graduation_year, specialty, specialties, domain, city, country, experience, photo_url, offers_mentoring, mentoring_topics",
+      "id, first_name, last_name, member_role, graduation_year, specialty, specialties, domain, city, country, experience, photo_url, offers_mentoring, mentoring_topics, linkedin_url, portfolio_url",
     )
     .eq("is_active", true)
     .order("last_name");

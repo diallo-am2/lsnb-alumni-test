@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { Button } from "../components/ui/Button";
 import { getPostAuthPath } from "../lib/auth";
 import { completeMemberProfile, loadOnboardingProfile, type OnboardingProfile } from "../lib/onboardingRepository";
+import { getProfileUrlError } from "../lib/profileLinks";
 import { supabase } from "../lib/supabase";
 
 export function CompleteProfilePage() {
@@ -39,6 +40,13 @@ export function CompleteProfilePage() {
     event.preventDefault();
     if (!role || busy || profile?.id !== user?.id) return;
     const data = new FormData(event.currentTarget);
+    const linkedinUrl = String(data.get("linkedinUrl") ?? "").trim();
+    const portfolioUrl = String(data.get("portfolioUrl") ?? "").trim();
+    const linkError = getProfileUrlError(linkedinUrl, "LinkedIn") ?? getProfileUrlError(portfolioUrl, "du portfolio");
+    if (linkError) {
+      setError(linkError);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -49,6 +57,7 @@ export function CompleteProfilePage() {
         country: String(data.get("country") ?? ""), experience: String(data.get("experience") ?? ""),
         gender: String(data.get("gender") ?? "unspecified") as "male" | "female" | "unspecified",
         offersMentoring: data.get("offersMentoring") === "on", contactVisible: data.get("contactVisible") === "on",
+        linkedinUrl, portfolioUrl,
         termsAccepted: data.get("termsAccepted") === "on",
       });
       await refreshProfile();
@@ -104,6 +113,10 @@ export function CompleteProfilePage() {
                 <label className="field-group"><span>Pays</span><input name="country" autoComplete="country-name" maxLength={150} required disabled={busy} /></label>
               </div>
               <label className="field-group"><span>Parcours et expériences</span><textarea name="experience" rows={5} maxLength={5000} placeholder="Études, transitions, activité actuelle et ce que vous aimeriez partager." required disabled={busy} /></label>
+              <div className="form-row">
+                <label className="field-group"><span>Profil LinkedIn (facultatif)</span><input name="linkedinUrl" type="text" inputMode="url" placeholder="https://www.linkedin.com/in/votre-profil" disabled={busy} /><small>Le lien doit commencer par https://</small></label>
+                <label className="field-group"><span>Portfolio ou site personnel (facultatif)</span><input name="portfolioUrl" type="text" inputMode="url" placeholder="https://votre-site.com" disabled={busy} /><small>Le lien doit commencer par https://</small></label>
+              </div>
               {role === "alumni" && <label className="form-check form-check--mentor"><input name="offersMentoring" type="checkbox" disabled={busy} /><span><b>Je souhaite proposer du mentorat</b>Je pourrai accepter ou refuser les demandes.</span></label>}
               <label className="form-check"><input name="contactVisible" type="checkbox" disabled={busy} /><span><b>Rendre mon contact visible aux membres</b>Ce choix peut être modifié plus tard.</span></label>
               <label className="form-consent"><input name="termsAccepted" type="checkbox" required disabled={busy} /><span>J’accepte que ces informations soient utilisées pour mon profil LSNB Réseau. <Link to="/confidentialite">Voir la politique de confidentialité.</Link></span></label>

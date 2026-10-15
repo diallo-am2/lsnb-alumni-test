@@ -13,6 +13,7 @@ export type ProfileCompletion = {
   graduationYear: number; specialty: string; city: string; country: string;
   experience: string; gender: "male" | "female" | "unspecified";
   offersMentoring: boolean; contactVisible: boolean; termsAccepted: boolean;
+  linkedinUrl: string; portfolioUrl: string;
 };
 
 export async function loadOnboardingProfile(userId: string): Promise<OnboardingProfile> {
@@ -25,13 +26,15 @@ export async function loadOnboardingProfile(userId: string): Promise<OnboardingP
 
 export async function completeMemberProfile(profile: ProfileCompletion): Promise<void> {
   if (!supabase) throw new Error("Supabase n’est pas configuré.");
-  const { error } = await supabase.rpc("complete_member_profile", {
+  const { error } = await supabase.rpc("complete_member_profile_with_links", {
     p_first_name: profile.firstName.trim(), p_last_name: profile.lastName.trim(),
     p_member_role: profile.memberRole, p_graduation_year: profile.graduationYear,
     p_specialty: profile.specialty.trim(), p_city: profile.city.trim(), p_country: profile.country.trim(),
     p_experience: profile.experience.trim(), p_gender: profile.gender,
     p_offers_mentoring: profile.memberRole === "alumni" && profile.offersMentoring,
     p_contact_visible: profile.contactVisible, p_terms_accepted: profile.termsAccepted,
+    p_linkedin_url: profile.linkedinUrl.trim() || null,
+    p_portfolio_url: profile.portfolioUrl.trim() || null,
   });
   if (error) throw new Error("Le profil n’a pas pu être enregistré. Vérifiez les champs et réessayez.");
 }

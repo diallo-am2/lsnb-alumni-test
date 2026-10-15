@@ -6,6 +6,7 @@ import { Button } from "../components/ui/Button";
 import { getAuthCallbackUrl, getPostAuthPath } from "../lib/auth";
 import { getAvatarValidationError, uploadAvatar } from "../lib/avatarRepository";
 import { savePendingAvatar } from "../lib/pendingAvatarStore";
+import { getProfileUrlError } from "../lib/profileLinks";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 
 type SubmissionStatus = {
@@ -54,6 +55,14 @@ export function JoinPage() {
     const data = new FormData(form);
     setStatus({ kind: "loading" });
 
+    const linkedinUrl = String(data.get("linkedinUrl") ?? "").trim();
+    const portfolioUrl = String(data.get("portfolioUrl") ?? "").trim();
+    const linkError = getProfileUrlError(linkedinUrl, "LinkedIn") ?? getProfileUrlError(portfolioUrl, "du portfolio");
+    if (linkError) {
+      setStatus({ kind: "error", message: linkError });
+      return;
+    }
+
     const profile = {
       first_name: String(data.get("firstName") ?? "").trim(),
       last_name: String(data.get("lastName") ?? "").trim(),
@@ -64,6 +73,8 @@ export function JoinPage() {
       country: String(data.get("country") ?? "").trim(),
       city: String(data.get("city") ?? "").trim(),
       experience: String(data.get("experience") ?? "").trim(),
+      linkedin_url: linkedinUrl || null,
+      portfolio_url: portfolioUrl || null,
       offers_mentoring: role === "alumni" && offersMentoring,
       contact_visible: data.get("contactVisible") === "on",
     };
@@ -221,6 +232,19 @@ export function JoinPage() {
                 required
               />
             </label>
+
+            <div className="form-row">
+              <label className="field-group">
+                <span>Profil LinkedIn (facultatif)</span>
+                <input name="linkedinUrl" type="text" inputMode="url" placeholder="https://www.linkedin.com/in/votre-profil" />
+                <small>Le lien doit commencer par https://</small>
+              </label>
+              <label className="field-group">
+                <span>Portfolio ou site personnel (facultatif)</span>
+                <input name="portfolioUrl" type="text" inputMode="url" placeholder="https://votre-site.com" />
+                <small>Le lien doit commencer par https://</small>
+              </label>
+            </div>
 
             <label className="photo-upload">
               <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handlePhoto} />

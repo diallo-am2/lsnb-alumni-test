@@ -164,6 +164,8 @@ Migrations appliquées dans l'ordre :
   202610050001_profile_links               profiles.linkedin_url et
                                            profiles.portfolio_url
                                            (nullable, https:// exigé)
+  202610150001_profile_links_onboarding    persistance des liens lors des
+                                           inscriptions e-mail et Google
   202610050002_opportunities               offres, médias, signalements,
                                            bucket privé opportunity-media
 

@@ -104,6 +104,7 @@ export function ProfilePage() {
 
   const handleRequestSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const form = event.currentTarget;
     if (!supabase) {
       setRequestStatus({ kind: "error", message: "Supabase n’est pas configuré." });
       return;
@@ -123,7 +124,7 @@ export function ProfilePage() {
       return;
     }
 
-    const data = new FormData(event.currentTarget);
+    const data = new FormData(form);
     const { data: created, error } = await supabase.from("connection_requests").insert({
       requester_id: authData.user.id,
       recipient_id: profile.id,
