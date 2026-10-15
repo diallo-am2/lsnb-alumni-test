@@ -22,6 +22,8 @@ import { PrivacyPage } from "./pages/PrivacyPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { RequestsPage } from "./pages/RequestsPage";
 import { CompleteProfilePage } from "./pages/CompleteProfilePage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 
 function PostConfirmationRedirect() {
   const { lastEvent, user } = useAuth();
@@ -74,7 +76,9 @@ export function App() {
             <Route path="/espace/demandes" element={<RequireAuth><RequestsPage /></RequireAuth>} />
             <Route path="/rejoindre" element={<JoinPage />} />
             <Route path="/connexion" element={<LoginPage />} />
+            <Route path="/mot-de-passe-oublie" element={<ForgotPasswordPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
+            <Route path="/mot-de-passe/nouveau" element={<RequireAuth allowIncomplete><ResetPasswordPage /></RequireAuth>} />
             <Route path="/completer-profil" element={<RequireAuth allowIncomplete><CompleteProfilePage /></RequireAuth>} />
             <Route
               path="/espace"

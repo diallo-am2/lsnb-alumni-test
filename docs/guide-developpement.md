@@ -18,7 +18,7 @@ Le projet est un **prototype de réseau pour les élèves et anciens élèves du
 | --- | --- |
 | Accueil et navigation | Pages principales, affichage adapté au mobile et animations. L'accueil présente encore des profils fictifs. |
 | Annuaire et fiches | Recherche par texte, filtres domaine/pays/mentorat et fiches individuelles. Lecture des profils Supabase si disponibles et autorisés. |
-| Comptes | Inscription, confirmation par e-mail, connexion, renvoi de confirmation et déconnexion avec Supabase. |
+| Comptes | Inscription, confirmation par e-mail, connexion, récupération du mot de passe, renvoi de confirmation et déconnexion avec Supabase. |
 | Espace membre | Consultation et modification de son profil, disponibilité pour le mentorat et choix de visibilité du contact. |
 | Photos | Ajout, remplacement et suppression ; JPEG, PNG ou WebP, 4 Mo maximum. |
 | Mise en relation | Formulaire relié à une table de demandes. Le parcours réel reste à tester ; la boîte de réception et les réponses restent à développer. |
@@ -91,7 +91,7 @@ Consulter `http://localhost:4000/health` pour vérifier que ce serveur répond. 
 | Emplacement | Contenu |
 | --- | --- |
 | Supabase Auth (`auth.users`) | Compte de connexion, e-mail et identifiant unique du membre. L'authentification et les mots de passe sont gérés par Supabase Auth. |
-| Table `profiles` | Nom, promotion, parcours, ville/pays, mentorat et adresse de la photo (`photo_url`). |
+| Table `profiles` | Nom, promotion, parcours, ville/pays, mentorat, liens publics, adresse de la photo (`photo_url`) et éventuelle date de demande de suppression. |
 | Table `profile_contacts` | E-mail de contact et choix de visibilité, séparés du profil. |
 | Table `connection_requests` | Expéditeur, destinataire, message et statut de la demande : en attente, acceptée ou refusée. |
 | Supabase Storage : `avatars` | Fichiers des photos, dans un espace de stockage appelé « bucket ». |
@@ -118,10 +118,10 @@ Les règles **RLS** sont les permissions appliquées par la base : profils actif
 
 ### Nouvelles fonctionnalités prévues
 
-Ces trois ajouts font partie des évolutions demandées ; **ils ne sont pas encore développés**.
+Les évolutions ci-dessous restent à suivre avec l'équipe ; certaines sont déjà partiellement livrées dans le code.
 
-- **Connexion avec Google.** Ajouter « Continuer avec Google » à l'inscription et à la connexion, via Supabase. Après la première connexion, demander les informations LSNB manquantes. Vérifier aussi le cas d'une personne qui possède déjà un compte avec la même adresse e-mail.
-- **Liens sur le profil.** Permettre d'ajouter, modifier et supprimer un lien LinkedIn et un lien de portfolio. Enregistrer ces champs dans la base et les afficher sur la fiche du membre. Vérifier que les adresses sont valides et que les champs restent facultatifs.
+- **Connexion avec Google.** Parcours développé ; vérifier encore les réglages Supabase et les cas d'association de comptes en environnement réel.
+- **Liens sur le profil.** Parcours développé : champs facultatifs, validation HTTPS, affichage sur la fiche publique et dans l'annuaire. Les migrations `202610050001_profile_links` et `202610150001_profile_links_onboarding` doivent être appliquées dans Supabase.
 - **Highlight de la semaine.** Mettre en avant **deux alumni, un homme et une femme, pendant une semaine**. Générer par IA une section qui présente leurs parcours à partir des informations de leurs profils, sans inventer de faits. Enregistrer la sélection, les dates et le texte en base pour garder le même contenu toute la semaine ; renouveler ensuite la sélection. La génération doit se faire côté serveur, une fois par semaine, et non à chaque visite.
 
 **Détails du highlight à définir avec l'équipe :** sélection manuelle ou automatique, jour de renouvellement, information de genre déclarée volontairement par le membre (aucun champ prévu aujourd'hui ; ne pas la déduire du prénom ou de la photo), accord des personnes mises en avant et relecture du texte IA. Prévoir aussi le cas où deux profils éligibles ne sont pas disponibles ou si la génération échoue.
@@ -130,7 +130,7 @@ Ces trois ajouts font partie des évolutions demandées ; **ils ne sont pas enco
 
 1. **Fiabiliser les données affichées.** Relier l'accueil et ses filtres aux vrais profils. Dans l'annuaire, distinguer une base vide, une erreur technique et le mode démonstration.
 2. **Terminer la mise en relation.** Tester l'enregistrement d'une demande avec deux comptes, puis ajouter les demandes reçues/envoyées, l'acceptation, le refus et le suivi. Prévoir les notifications si elles sont retenues. L'interface n'affiche pas encore les coordonnées autorisées des autres membres.
-3. **Compléter la gestion du compte.** Ajouter le mot de passe oublié, son changement et la suppression du compte. Le renvoi de confirmation d'e-mail existant ne réinitialise pas le mot de passe.
+3. **Compléter la gestion du compte.** Le mot de passe oublié et son changement utilisent maintenant le flow Supabase Auth (`/mot-de-passe-oublie`, puis `/mot-de-passe/nouveau`). La suppression suit la décision du pilotage : désactivation immédiate, puis purge après 30 jours des profils, demandes, offres, snapshots générés et fichiers Storage. La migration `202610150002_account_deletion` et le cron `lsnb-alumni-account-purge` doivent être appliqués/configurés.
 4. **Préparer l'ouverture aux membres.** Définir puis développer la vérification des inscriptions et la modération. Clarifier avec l'équipe la visibilité souhaitée des photos et des coordonnées, puis aligner l'interface et la page de confidentialité.
 5. **Renforcer la validation.** Ajouter des tests des parcours principaux et des droits d'accès. Vérifier le mobile, la navigation au clavier et les erreurs. Le seul test automatisé actuel contrôle `/health` de l'API.
 

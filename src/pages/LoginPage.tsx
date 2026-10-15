@@ -112,6 +112,7 @@ export function LoginPage() {
           >
             Renvoyer l’e-mail de confirmation
           </button>
+          <Link className="login-page__forgot" to="/mot-de-passe-oublie">Mot de passe oublié ?</Link>
           <p className="account-form__login">Pas encore membre&nbsp;? <Link to={joinPath}>Créer un compte</Link></p>
         </form>
       </div>

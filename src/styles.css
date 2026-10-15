@@ -4930,6 +4930,38 @@ textarea:focus-visible {
   font-weight: 650;
 }
 
+.account-deletion {
+  display: grid;
+  gap: 16px;
+  margin-top: 26px;
+  padding: 24px;
+  border-top: 3px solid #b4442b;
+  background: #f6e3dc;
+}
+
+.account-deletion h2,
+.account-deletion p {
+  margin: 0;
+}
+
+.account-deletion h2 {
+  color: #7d301d;
+  font-size: 1.25rem;
+}
+
+.account-deletion > div > p:last-child {
+  margin-top: 8px;
+  color: #613d33;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.account-deletion .button {
+  justify-self: start;
+  color: #7d301d;
+  border-color: #b4442b;
+}
+
 .profile-links ul {
   display: grid;
   gap: 8px;

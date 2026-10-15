@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "pretest": "node scripts/check-dev-deps.mjs",
     "test": "node --import tsx --test src/app.test.ts src/highlights/*.test.ts src/notifications/*.test.ts src/frontend-lib.test.ts",
+    "accounts:purge": "node scripts/purge-deleted-accounts.mjs",
     "highlights:generate": "node dist/highlights/run.js",
     "highlights:repair": "node dist/highlights/run.js --repair-fallbacks",
     "highlights:repair:retry": "node dist/highlights/run.js --repair-fallbacks --retry-failed",

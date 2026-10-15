@@ -18,6 +18,9 @@ export function AuthCallbackPage() {
     task.current ??= (async () => {
       if (!supabase) throw new Error("La connexion n’est pas configurée sur ce site.");
       const user = await resolveCallbackUser(supabase.auth, returnUrl.current, () => new URL(window.location.href));
+      const hashParams = new URLSearchParams(returnUrl.current.hash.slice(1));
+      const callbackType = returnUrl.current.searchParams.get("type") ?? hashParams.get("type");
+      if (callbackType === "recovery") return "/mot-de-passe/nouveau";
       const profile = await loadOnboardingProfile(user.id);
       const next = returnUrl.current.searchParams.get("next");
       if (!profile.profile_completed) return getProfileCompletionPath(next);
