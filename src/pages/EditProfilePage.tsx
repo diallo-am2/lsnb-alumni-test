@@ -6,6 +6,7 @@ import {
   LockKeyhole,
   Orbit,
   Save,
+  Trash2,
   Undo2,
   UserRound,
 } from "lucide-react";
