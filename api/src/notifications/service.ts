@@ -1,6 +1,6 @@
 import type { NotificationConfig } from "../config.js";
 import type { Mailer } from "./mailer.js";
-import { buildEmail, type NotificationEvent, type RequestKind } from "./templates.js";
+import { buildAccountDeletionEmail, buildEmail, type NotificationEvent, type RequestKind } from "./templates.js";
 
 export type NotificationServiceConfig = Pick<NotificationConfig, "url" | "secretKey" | "publishableKey" | "siteUrl">;
 export type NotifyResult = "sent" | "already_sent";
@@ -25,6 +25,7 @@ type ProfileRow = { id: string; first_name: string; last_name: string };
 
 export type NotificationService = {
   notify(event: NotificationEvent, requestId: string, accessToken: string): Promise<NotifyResult>;
+  notifyAccountDeletion(accessToken: string): Promise<NotifyResult>;
 };
 
 export function createNotificationService(
@@ -55,7 +56,7 @@ export function createNotificationService(
   }
 
   /** Asks the auth service who owns the session token. Never trust an id sent by the browser. */
-  async function userIdFor(accessToken: string): Promise<string> {
+  async function sessionUser(accessToken: string): Promise<{ id: string; email?: string }> {
     let response: Response;
     try {
       response = await fetchImpl(`${config.url}/auth/v1/user`, {
@@ -66,10 +67,12 @@ export function createNotificationService(
       throw new NotificationError(502, "Le service d’authentification ne répond pas.");
     }
     if (!response.ok) throw new NotificationError(401, "Session invalide ou expirée.");
-    const user = (await response.json().catch(() => null)) as { id?: unknown } | null;
+    const user = (await response.json().catch(() => null)) as { id?: unknown; email?: unknown } | null;
     if (!user || typeof user.id !== "string") throw new NotificationError(401, "Session invalide ou expirée.");
-    return user.id;
+    return { id: user.id, ...(typeof user.email === "string" && user.email ? { email: user.email } : {}) };
   }
+
+  async function userIdFor(accessToken: string) { return (await sessionUser(accessToken)).id; }
 
   async function notify(event: NotificationEvent, requestId: string, accessToken: string): Promise<NotifyResult> {
     const userId = await userIdFor(accessToken);
@@ -142,5 +145,31 @@ export function createNotificationService(
     }
   }
 
-  return { notify };
+  async function notifyAccountDeletion(accessToken: string): Promise<NotifyResult> {
+    const { id, email } = await sessionUser(accessToken);
+    if (!email) throw new NotificationError(404, "Adresse e-mail introuvable.");
+    type DeletionRow = { first_name: string; deletion_requested_at: string | null; deletion_notice_sent_at: string | null };
+    const own = `profiles?${new URLSearchParams({ id: `eq.${id}` })}`;
+    let row: DeletionRow | undefined;
+    try {
+      row = (await rest<DeletionRow[]>(`${own}&${new URLSearchParams({ select: "first_name,deletion_requested_at,deletion_notice_sent_at", limit: "1" })}`))[0];
+    } catch { throw new NotificationError(502, "Le profil est momentanément indisponible."); }
+    if (!row?.deletion_requested_at) throw new NotificationError(409, "Aucune suppression de compte n’est en attente.");
+    if (row.deletion_notice_sent_at) return "already_sent";
+    let claimed: unknown[];
+    try {
+      claimed = await rest<unknown[]>(`${own}&${new URLSearchParams({ deletion_notice_sent_at: "is.null", deletion_requested_at: "not.is.null", select: "id" })}`, { method: "PATCH", body: { deletion_notice_sent_at: new Date().toISOString() }, prefer: "return=representation" });
+    } catch { throw new NotificationError(502, "Le profil est momentanément indisponible."); }
+    if (claimed.length === 0) return "already_sent";
+    try {
+      const purgeDate = new Date(new Date(row.deletion_requested_at).getTime() + 30 * 86_400_000);
+      await mailer.send({ to: email, ...buildAccountDeletionEmail({ firstName: row.first_name, purgeDate: purgeDate.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }), link: `${config.siteUrl}/espace/compte` }) });
+      return "sent";
+    } catch {
+      await rest(own, { method: "PATCH", body: { deletion_notice_sent_at: null } }).catch(() => undefined);
+      throw new NotificationError(502, "L’e-mail de confirmation n’a pas pu être envoyé.");
+    }
+  }
+
+  return { notify, notifyAccountDeletion };
 }

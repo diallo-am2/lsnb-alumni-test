@@ -74,6 +74,8 @@ pages/               Une page par route :
   /completer-profil  CompleteProfilePage (premier accès Google)
   /espace            MemberPage (protégée)
   /espace/modifier   EditProfilePage (protégée)
+   /espace/compte     AccountPage (protégée) suppression / annulation
+   /compte-supprime   AccountDeletedPage (publique) suppression programmée
   /offres            OpportunitiesPage (protégée) liste filtrable
   /offres/nouvelle   OpportunityEditorPage (protégée)
   /offres/:id        OpportunityPage (protégée) détail, contact, signalement
@@ -205,7 +207,11 @@ Contact de l'auteur : réutilise connection_requests (kind = contact).
 
 Fonctions SQL : claim_weekly_highlight, claim_ai_highlight,
 save_highlight_article, publish_weekly_highlight,
-complete_member_profile, claim/save/record des réparations.
+complete_member_profile, request/cancel/list account deletion,
+claim/save/record des réparations.
+
+Purge des comptes supprimés : hors Render, minuteur systemd nocturne
+(`deploy/purge/`) qui appelle `api/scripts/purge-deleted-accounts.mjs`.
 
 
 7. FLUX IMPORTANTS

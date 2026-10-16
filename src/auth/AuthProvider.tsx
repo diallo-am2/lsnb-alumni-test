@@ -9,6 +9,7 @@ type AuthContextValue = {
   isLoading: boolean;
   lastEvent: AuthChangeEvent | null;
   profileCompleted: boolean | null;
+  deletionRequestedAt: string | null;
   profileError: string | null;
   refreshProfile: () => Promise<void>;
 };
@@ -19,7 +20,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(supabase));
   const [lastEvent, setLastEvent] = useState<AuthChangeEvent | null>(null);
-  const [profileState, setProfileState] = useState<{ userId: string; completed: boolean | null; error: string | null } | null>(null);
+  const [profileState, setProfileState] = useState<{ userId: string; completed: boolean | null; deletionRequestedAt: string | null; error: string | null } | null>(null);
   const userId = session?.user.id;
   const currentUserId = useRef(userId);
   currentUserId.current = userId;
@@ -30,9 +31,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const request = ++profileRequest.current;
     try {
       const profile = await loadOnboardingProfile(userId);
-      if (currentUserId.current === userId && profileRequest.current === request) setProfileState({ userId, completed: profile.profile_completed, error: null });
+      if (currentUserId.current === userId && profileRequest.current === request) setProfileState({ userId, completed: profile.profile_completed, deletionRequestedAt: profile.deletion_requested_at, error: null });
     } catch {
-      if (currentUserId.current === userId && profileRequest.current === request) setProfileState({ userId, completed: null, error: "Impossible de vérifier votre profil. Réessayez." });
+      if (currentUserId.current === userId && profileRequest.current === request) setProfileState({ userId, completed: null, deletionRequestedAt: null, error: "Impossible de vérifier votre profil. Réessayez." });
     }
   }, [userId]);
 
@@ -76,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({ session, user: session?.user ?? null, isLoading, lastEvent,
       profileCompleted: profileState?.userId === userId ? profileState?.completed ?? null : null,
+      deletionRequestedAt: profileState?.userId === userId ? profileState?.deletionRequestedAt ?? null : null,
       profileError: profileState?.userId === userId ? profileState?.error ?? null : null,
       refreshProfile,
     }),

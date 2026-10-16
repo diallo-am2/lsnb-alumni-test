@@ -107,3 +107,17 @@ export function buildEmail(input: EmailInput): EmailContent {
 
   return { subject: cleanText(c.subject, 150), text, html };
 }
+
+export function buildAccountDeletionEmail(input: { firstName: string; purgeDate: string; link: string }): EmailContent {
+  const name = cleanText(input.firstName, 60);
+  const heading = "Votre compte est en cours de suppression";
+  const lead = `${name ? `${name}, v` : "V"}otre profil n’est plus visible dans l’annuaire. Votre compte et vos données seront supprimés définitivement le ${cleanText(input.purgeDate, 40)}.`;
+  const detail = "Vous avez changé d’avis ? Connectez-vous avant cette date et annulez la suppression depuis votre espace.";
+  const note = "Si vous n’êtes pas à l’origine de cette demande, connectez-vous dès maintenant pour l’annuler et changez votre mot de passe.";
+  const safe = (value: string) => escapeHtml(value);
+  return {
+    subject: "Suppression de votre compte LSNB Réseau programmée",
+    text: [heading, "", lead, detail, "", `Annuler la suppression : ${input.link}`, "", note, "", "LSNB Réseau"].join("\n"),
+    html: `<!doctype html><html lang="fr"><body style="font-family:Arial,sans-serif;color:${NAVY};"><h1>${safe(heading)}</h1><p>${safe(lead)}</p><p>${safe(detail)}</p><p><a href="${safe(input.link)}">Annuler la suppression</a></p><p>${safe(note)}</p></body></html>`,
+  };
+}

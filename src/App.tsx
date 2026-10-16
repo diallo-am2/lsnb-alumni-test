@@ -24,6 +24,8 @@ import { RequestsPage } from "./pages/RequestsPage";
 import { CompleteProfilePage } from "./pages/CompleteProfilePage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { AccountPage } from "./pages/AccountPage";
+import { AccountDeletedPage } from "./pages/AccountDeletedPage";
 
 function PostConfirmationRedirect() {
   const { lastEvent, user } = useAuth();
@@ -79,6 +81,8 @@ export function App() {
             <Route path="/mot-de-passe-oublie" element={<ForgotPasswordPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
             <Route path="/mot-de-passe/nouveau" element={<RequireAuth allowIncomplete><ResetPasswordPage /></RequireAuth>} />
+            <Route path="/espace/compte" element={<RequireAuth allowIncomplete><AccountPage /></RequireAuth>} />
+            <Route path="/compte-supprime" element={<AccountDeletedPage />} />
             <Route path="/completer-profil" element={<RequireAuth allowIncomplete><CompleteProfilePage /></RequireAuth>} />
             <Route
               path="/espace"

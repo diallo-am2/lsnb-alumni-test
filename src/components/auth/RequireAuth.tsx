@@ -6,7 +6,7 @@ import { getProfileCompletionPath } from "../../lib/auth";
 import { Button } from "../ui/Button";
 
 export function RequireAuth({ children, allowIncomplete = false }: { children: ReactNode; allowIncomplete?: boolean }) {
-  const { user, isLoading, profileCompleted, profileError, refreshProfile } = useAuth();
+  const { user, isLoading, profileCompleted, deletionRequestedAt, profileError, refreshProfile } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -33,6 +33,7 @@ export function RequireAuth({ children, allowIncomplete = false }: { children: R
     if (profileCompleted === null) return (
       <div className="auth-state-page" role="status"><LoaderCircle className="spin" aria-hidden="true" /><p>Chargement de votre profil…</p></div>
     );
+    if (deletionRequestedAt && location.pathname !== "/espace/compte") return <Navigate to="/espace/compte" replace />;
     if (!profileCompleted) return <Navigate to={getProfileCompletionPath(`${location.pathname}${location.search}${location.hash}`)} replace />;
   }
 

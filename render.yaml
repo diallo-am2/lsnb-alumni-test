@@ -62,21 +62,3 @@ services:
       - key: OPENAI_MODEL
         value: gpt-5-nano
 
-  - type: cron
-    name: lsnb-alumni-account-purge
-    runtime: node
-    rootDir: api
-    plan: starter
-    schedule: "0 3 * * *"
-    # This job only uses Node 24's native fetch and the Supabase REST RPC;
-    # it does not need the API dependencies, dev dependencies or TypeScript build.
-    buildCommand: node --version
-    startCommand: node scripts/purge-deleted-accounts.mjs
-    autoDeployTrigger: commit
-    envVars:
-      - key: NODE_VERSION
-        value: 24.14.1
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SECRET_KEY
-        sync: false

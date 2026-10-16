@@ -174,6 +174,9 @@ test("the route needs a configured service and a bearer token", async (context) 
       if (args[2] === "expired") throw new NotificationError(401, "Session invalide ou expirée.");
       return "sent";
     },
+    async notifyAccountDeletion() {
+      return "sent";
+    },
   };
   const app = await buildApp({ config: base, logger: false, notificationService: stub });
   context.after(() => app.close());

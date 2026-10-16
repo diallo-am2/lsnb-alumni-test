@@ -6,12 +6,11 @@ import {
   LockKeyhole,
   Orbit,
   Save,
-  Trash2,
   Undo2,
   UserRound,
 } from "lucide-react";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { Button, ButtonLink } from "../components/ui/Button";
 import {
@@ -20,7 +19,6 @@ import {
   uploadAvatar,
 } from "../lib/avatarRepository";
 import { getProfileUrlError } from "../lib/profileLinks";
-import { supabase } from "../lib/supabase";
 import {
   loadEditableProfile,
   updateEditableProfile,
@@ -114,9 +112,6 @@ export function EditProfilePage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [status, setStatus] = useState<SaveStatus>({ kind: "idle" });
   const [linkErrors, setLinkErrors] = useState<LinkErrors>({});
-  const [deletionPhrase, setDeletionPhrase] = useState("");
-  const [deletionStatus, setDeletionStatus] = useState<string>();
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (!user) return;
@@ -285,26 +280,6 @@ export function EditProfilePage() {
           : "Impossible d’enregistrer vos modifications.",
       });
     }
-  };
-
-  const requestDeletion = async () => {
-    if (deletionPhrase !== "SUPPRIMER") {
-      setDeletionStatus("Saisissez SUPPRIMER pour confirmer la demande.");
-      return;
-    }
-    if (!supabase) {
-      setDeletionStatus("La suppression de compte n’est pas configurée.");
-      return;
-    }
-
-    setDeletionStatus("Désactivation de votre compte…");
-    const { error } = await supabase.rpc("request_account_deletion");
-    if (error) {
-      setDeletionStatus("La demande n’a pas pu être enregistrée. Réessayez.");
-      return;
-    }
-    await supabase.auth.signOut();
-    navigate("/", { replace: true });
   };
 
   if (isLoading) {
@@ -675,32 +650,6 @@ export function EditProfilePage() {
             )}
           </form>
 
-          <section className="account-deletion" aria-labelledby="account-deletion-title">
-            <div>
-              <p className="eyebrow eyebrow--dark">Données personnelles</p>
-              <h2 id="account-deletion-title">Demander la suppression du compte</h2>
-              <p>
-                Votre profil sera désactivé immédiatement et ne sera plus visible dans l’annuaire.
-                Les données associées seront supprimées après 30 jours, conformément à la politique de conservation.
-              </p>
-            </div>
-            <label className="field-group">
-              <span>Tapez SUPPRIMER pour confirmer</span>
-              <input
-                value={deletionPhrase}
-                onChange={(event) => {
-                  setDeletionPhrase(event.target.value);
-                  setDeletionStatus(undefined);
-                }}
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </label>
-            {deletionStatus && <p className="form-status form-status--error" role="alert">{deletionStatus}</p>}
-            <Button variant="outline" onClick={() => void requestDeletion()} disabled={status.kind === "loading"}>
-              <Trash2 size={16} aria-hidden="true" /> Demander la suppression
-            </Button>
-          </section>
         </section>
       </div>
     </div>

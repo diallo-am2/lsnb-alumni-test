@@ -1,0 +1,13 @@
+[Unit]
+Description=Purge LSNB accounts whose 30-day deletion delay is over
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+EnvironmentFile=/etc/lsnb/purge.env
+WorkingDirectory=/home/ubuntu/lsnb-alumni/api
+ExecStart=/usr/bin/node scripts/purge-deleted-accounts.mjs
+TimeoutStartSec=15min
+Nice=10

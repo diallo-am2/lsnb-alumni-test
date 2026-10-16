@@ -110,5 +110,19 @@ export async function buildApp(options: BuildAppOptions = {}) {
     },
   );
 
+  app.post("/api/v1/notifications/account-deletion", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    if (!notificationService) return reply.code(503).send({ error: "Les notifications par e-mail ne sont pas configurées." });
+    const match = /^Bearer\s+(\S+)$/i.exec(request.headers.authorization ?? "");
+    if (!match?.[1]) return reply.code(401).send({ error: "Connexion requise." });
+    try {
+      return { status: await notificationService.notifyAccountDeletion(match[1]) };
+    } catch (error) {
+      if (error instanceof NotificationError) return reply.code(error.statusCode).send({ error: error.message });
+      request.log.error("Unexpected failure while sending the account deletion e-mail");
+      return reply.code(502).send({ error: "La notification n’a pas pu être envoyée." });
+    }
+  });
+
   return app;
 }

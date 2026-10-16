@@ -201,6 +201,7 @@ export function MemberPage() {
             <Network aria-hidden="true" />
             <span><b>Compte connecté</b>Votre accès membre est opérationnel.</span>
           </div>
+          <ButtonLink to="/espace/compte" variant="quiet">Compte et données</ButtonLink>
           <Button variant="quiet" onClick={handleSignOut} disabled={isSigningOut}>
             <LogOut aria-hidden="true" />
             {isSigningOut ? "Déconnexion…" : "Se déconnecter"}
